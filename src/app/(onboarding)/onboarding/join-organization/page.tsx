@@ -168,16 +168,16 @@ export default function JoinOrganizationPage() {
                  * their email before accessing
                  * organization invitations.
                  */
-                if (
-                    !session.user
-                        .emailVerified
-                ) {
-                    window.location.assign(
-                        "/verify-email",
-                    );
-
-                    return;
-                }
+                // if (
+                //     !session.user
+                //         .emailVerified
+                // ) {
+                //     window.location.assign(
+                //         "/verify-email",
+                //     );
+                //
+                //     return;
+                // }
 
                 await loadInvitations();
             } catch (error) {
