@@ -1,18 +1,16 @@
 # Mizan DZ
 
-> **Modern business management software built for Algerian businesses.**
+> **Cloud-based business management software built for Algerian businesses, retailers, and wholesalers.**
 
 [Website](https://mizandz.com)
 
----
-
 ## Overview
 
-**Mizan DZ** is a cloud-based business management platform designed for Algerian retailers, wholesalers, distributors, and small and medium-sized businesses.
+**Mizan DZ** is a modern cloud-based business management platform designed for Algerian businesses, retailers, wholesalers, distributors, and small and medium-sized businesses.
 
-It brings essential business operations into one platform, including customers, products, inventory, sales, invoices, payments, outstanding balances, and expenses.
+Mizan brings core business operations into one centralized platform, making it easier to manage customers, products, inventory, sales, invoices, payments, outstanding balances, and expenses.
 
-Mizan is designed to simplify daily business operations and provide businesses with a centralized and organized way to manage their commercial activities.
+The platform is built with a focus on simplicity, organization, secure access, and business data isolation.
 
 ## Features
 
@@ -22,7 +20,7 @@ Mizan is designed to simplify daily business operations and provide businesses w
 * Sales management
 * Invoice management
 * Payment tracking
-* Outstanding balance and debt management
+* Outstanding balances and debt management
 * Expense management
 * Organization management
 * Employee invitations
@@ -31,7 +29,7 @@ Mizan is designed to simplify daily business operations and provide businesses w
 * Secure authentication
 * Responsive web interface
 
-## Core Workflow
+## Core Business Flow
 
 ```text
 Customer
@@ -70,36 +68,60 @@ Organization
  └── Expenses
 ```
 
-Each organization operates within its own business environment, while access to business data is controlled through authentication, roles, and permissions.
+Business access is organization-scoped and controlled through authentication, roles, and permissions.
 
-## Tech Stack
+## Technology Stack
 
-* **Next.js**
-* **TypeScript**
-* **Tailwind CSS**
-* **shadcn/ui**
-* **Drizzle ORM**
-* **PostgreSQL / Neon**
-* **Better Auth**
-* **Zod**
-* **React Hook Form**
+| Technology        | Purpose                          |
+| ----------------- | -------------------------------- |
+| Next.js 16        | Full-stack web application       |
+| React 19          | User interface                   |
+| TypeScript        | Type safety                      |
+| Tailwind CSS      | Styling                          |
+| shadcn/ui         | UI components                    |
+| Drizzle ORM       | Database access                  |
+| PostgreSQL / Neon | Database                         |
+| Better Auth       | Authentication and organizations |
+| Zod               | Validation                       |
+| React Hook Form   | Form handling                    |
+| Resend            | Email delivery                   |
+
+## Project Structure
+
+```text
+src/
+├── app/           # Application routes and pages
+├── components/    # Reusable UI components
+├── db/            # Database schema and configuration
+├── hooks/         # React hooks
+└── lib/           # Shared libraries and application logic
+```
 
 ## Getting Started
 
-### 1. Clone the repository
+### Prerequisites
+
+Make sure you have:
+
+* Node.js
+* npm
+* PostgreSQL-compatible database
+* Git
+
+### Clone the repository
 
 ```bash
-git clone [https://github.com/novadevDZ/mizan.git](https://github.com/novadevDZ/mizan-dz-platform.git)
+git clone https://github.com/novadevDZ/mizan-dz-platform.git
 cd mizan-dz-platform
 ```
 
-### 2. Install dependencies
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Configure environment variables
+### Environment variables
 
 Create a local environment file:
 
@@ -107,7 +129,9 @@ Create a local environment file:
 cp .env.example .env.local
 ```
 
-Configure the required variables:
+Configure the environment variables required by the application.
+
+Typical configuration includes:
 
 ```env
 DATABASE_URL="your_database_url"
@@ -119,145 +143,228 @@ GOOGLE_CLIENT_ID="your_google_client_id"
 GOOGLE_CLIENT_SECRET="your_google_client_secret"
 ```
 
-Never commit real credentials, API keys, database URLs, or authentication secrets.
+Additional environment variables may be required depending on the enabled integrations.
 
-### 4. Run database migrations
+> Never commit real secrets, API keys, database credentials, OAuth secrets, or authentication tokens to the repository.
+
+### Database
+
+Generate the Drizzle migration files:
 
 ```bash
 npm run db:generate
-npm run db:migrate
 ```
 
-Use the database scripts defined in `package.json` if your project configuration differs.
+Push the current schema to the configured database:
 
-### 5. Start the development server
+```bash
+npm run db:push
+```
+
+> Review your database workflow carefully before using `db:push` against a production database.
+
+### Run the development server
 
 ```bash
 npm run dev
 ```
 
-Open:
+The application will be available at:
 
 ```text
 http://localhost:3000
 ```
 
-## Production
+## Available Scripts
 
-Build the application:
+The project currently provides the following npm scripts:
+
+```bash
+npm run dev
+npm run build
+npm run start
+npm run lint
+npm run db:generate
+npm run db:push
+```
+
+### Production build
 
 ```bash
 npm run build
 ```
 
-Start the production server:
+### Production server
 
 ```bash
 npm run start
 ```
 
-Production deployments should use:
+### Lint
 
-* Secure environment variables
-* HTTPS
-* Production database credentials
-* Production authentication configuration
-* Proper database migrations
-* Monitoring and error logging
+```bash
+npm run lint
+```
+
+## Production Deployment
+
+Mizan is designed to run as a modern Next.js application and can be deployed to platforms that support Next.js, including Vercel.
+
+A typical production architecture is:
+
+```text
+GitHub
+   │
+   ▼
+Vercel
+   │
+   ├── Next.js Application
+   │
+   └── Environment Variables
+             │
+             ▼
+       Neon PostgreSQL
+```
+
+### Production checklist
+
+Before deploying:
+
+* Configure production environment variables.
+* Configure the production database.
+* Set the production Better Auth URL.
+* Configure Google OAuth for the production domain.
+* Verify database schema and migrations.
+* Run a successful production build.
+* Verify authentication and authorization.
+* Verify organization isolation.
+* Test critical business workflows.
+* Enable HTTPS.
+* Configure monitoring and error tracking as needed.
 
 ## Security
 
-Mizan is built with a focus on secure business data management.
+Mizan handles business-related data, so security and authorization are fundamental parts of the architecture.
 
-Key principles include:
+The application is designed around:
 
 * Server-side authorization
-* Organization-level data isolation
+* Organization-scoped data access
+* Role-based access control
 * Secure authentication
 * Input validation
 * Protected environment variables
-* Role-based access control
 * HTTPS in production
 
-Authentication and authorization are treated separately. Protected server operations must verify that the authenticated user is authorized to access the requested organization and resource.
+Authentication and authorization are separate concerns.
 
-## Project Structure
+A valid authenticated session does not automatically grant access to every organization or resource. Protected server operations must verify that the current user is authorized to access the requested organization and data.
 
-A simplified structure:
+## Data Isolation
+
+Mizan follows an organization-based model:
 
 ```text
-src/
-├── app/
-├── components/
-├── db/
-├── lib/
-├── hooks/
-└── ...
+User → Organization → Business Data
 ```
 
-The architecture may evolve as the product develops.
+Business records such as customers, products, sales, invoices, payments, and expenses must remain scoped to the correct organization.
+
+This is a core requirement of the multi-tenant architecture.
 
 ## Development Principles
 
 ### Business-first
 
-Features should solve real business problems and improve daily operations.
+Features should solve concrete business problems and improve daily operations.
 
 ### Simplicity
 
-Common workflows should remain fast and easy to understand.
-
-### Data isolation
-
-Business data must remain isolated between organizations.
+Common workflows should remain fast, predictable, and easy to understand.
 
 ### Security
 
-Authorization must be enforced on the server, not only through the user interface.
+Authorization must be enforced on the server and must not rely only on frontend visibility.
+
+### Maintainability
+
+Code should remain modular, typed, testable, and understandable as the product grows.
 
 ### Reliability
 
-Production features should be stable, predictable, and maintainable.
+Production features should be stable and predictable under real-world usage.
+
+## Current Scope
+
+Mizan currently focuses on the core operational needs of businesses:
+
+```text
+Customers
+Products
+Inventory
+Sales
+Invoices
+Payments
+Outstanding Balances
+Expenses
+Organizations
+Employees
+Permissions
+```
+
+The product is currently delivered with an **English-language interface**.
 
 ## Roadmap
 
-Potential future improvements include:
+Future development may include:
 
-* Advanced business analytics
-* Reporting
-* Advanced inventory workflows
+* Advanced analytics
+* Business reporting
+* Improved inventory workflows
 * Financial insights
 * Automation
 * Notifications
 * Mobile experience
 * Additional integrations
-* Localization and multilingual support
+* Multilingual support
+* Arabic and French localization
 
-The roadmap is subject to change based on customer needs and product priorities.
+The roadmap may change according to customer requirements and product priorities.
 
 ## Contributing
 
-Issues, suggestions, and contributions are welcome.
+This repository is primarily maintained as the codebase for Mizan DZ.
 
-For significant changes:
+For bugs, improvements, or technical proposals:
 
-1. Open an issue describing the problem or proposal.
-2. Explain the expected behavior.
-3. Keep changes focused.
-4. Verify that the application builds successfully.
-5. Submit a pull request.
+1. Open an issue.
+2. Clearly describe the problem or proposed change.
+3. Include relevant reproduction steps when applicable.
+4. Keep pull requests focused.
+5. Verify that the project builds successfully.
 
-Never include credentials, tokens, private keys, or sensitive customer information in issues or pull requests.
+Never include:
+
+* Passwords
+* API keys
+* OAuth secrets
+* Database credentials
+* Authentication tokens
+* Private customer information
+
+in issues, pull requests, screenshots, or commits.
 
 ## License
 
-This project is currently **proprietary**.
+Mizan DZ is proprietary software.
 
-All rights reserved unless otherwise stated.
+All rights reserved.
+
+The source code is provided for authorized development and maintenance purposes only. Redistribution, resale, sublicensing, or unauthorized commercial use is not permitted without explicit permission from the project owner.
 
 ## Status
 
-**Mizan DZ is being prepared for production deployment.**
+**Active development — preparing for production deployment.**
 
 ---
 
