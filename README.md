@@ -89,8 +89,8 @@ Each organization operates within its own business environment, while access to 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/novadevDZ/mizan.git
-cd mizan
+git clone [https://github.com/novadevDZ/mizan.git](https://github.com/novadevDZ/mizan-dz-platform.git)
+cd mizan-dz-platform
 ```
 
 ### 2. Install dependencies
