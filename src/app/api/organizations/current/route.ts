@@ -38,9 +38,7 @@ function isRecord(
 }
 
 function normalizePhone(value: string) {
-    return value
-        .replace(/\s+/g, "")
-        .trim();
+    return value.replace(/\s+/g, "").trim();
 }
 
 function isValidPhone(value: string) {
@@ -67,10 +65,9 @@ export async function GET() {
             headers,
         } = await requireApiSession();
 
-        const session =
-            await auth.api.getSession({
-                headers,
-            });
+        const session = await auth.api.getSession({
+            headers,
+        });
 
         if (!session?.session) {
             return apiError(
@@ -91,34 +88,32 @@ export async function GET() {
             );
         }
 
-        const rows =
-            await db
-                .select({
-                    organization: organizations,
-                    role: members.role,
-                })
-                .from(members)
-                .innerJoin(
-                    organizations,
-                    eq(
-                        members.organizationId,
-                        organizations.id,
-                    ),
-                )
-                .where(
-                    eq(
-                        members.userId,
-                        user.id,
-                    ),
-                );
-
-        const current =
-            rows.find(
-                (row) =>
-                    row.organization.authOrganizationId ===
-                    authOrganizationId &&
-                    row.organization.deletedAt === null,
+        const rows = await db
+            .select({
+                organization: organizations,
+                role: members.role,
+            })
+            .from(members)
+            .innerJoin(
+                organizations,
+                eq(
+                    members.organizationId,
+                    organizations.id,
+                ),
+            )
+            .where(
+                eq(
+                    members.userId,
+                    user.id,
+                ),
             );
+
+        const current = rows.find(
+            (row) =>
+                row.organization.authOrganizationId ===
+                authOrganizationId &&
+                row.organization.deletedAt === null,
+        );
 
         if (!current) {
             return apiError(
@@ -175,10 +170,9 @@ export async function PATCH(
         // 1. Resolve active organization
         // =====================================================
 
-        const session =
-            await auth.api.getSession({
-                headers,
-            });
+        const session = await auth.api.getSession({
+            headers,
+        });
 
         if (!session?.session) {
             return apiError(
@@ -203,34 +197,32 @@ export async function PATCH(
         // 2. Find current Mizan organization + membership
         // =====================================================
 
-        const rows =
-            await db
-                .select({
-                    organization: organizations,
-                    membership: members,
-                })
-                .from(members)
-                .innerJoin(
-                    organizations,
-                    eq(
-                        members.organizationId,
-                        organizations.id,
-                    ),
-                )
-                .where(
-                    eq(
-                        members.userId,
-                        user.id,
-                    ),
-                );
-
-        const current =
-            rows.find(
-                (row) =>
-                    row.organization.authOrganizationId ===
-                    authOrganizationId &&
-                    row.organization.deletedAt === null,
+        const rows = await db
+            .select({
+                organization: organizations,
+                membership: members,
+            })
+            .from(members)
+            .innerJoin(
+                organizations,
+                eq(
+                    members.organizationId,
+                    organizations.id,
+                ),
+            )
+            .where(
+                eq(
+                    members.userId,
+                    user.id,
+                ),
             );
+
+        const current = rows.find(
+            (row) =>
+                row.organization.authOrganizationId ===
+                authOrganizationId &&
+                row.organization.deletedAt === null,
+        );
 
         if (!current) {
             return apiError(
@@ -243,15 +235,16 @@ export async function PATCH(
         // =====================================================
         // 3. Permission check
         // =====================================================
+        //
+        // The current Mizan role type does not include "admin".
+        // Only "owner" can update organization-level settings.
+        //
 
-        if (
-            current.membership.role !== "owner" &&
-            current.membership.role !== "admin"
-        ) {
+        if (current.membership.role !== "owner") {
             return apiError(
                 403,
                 "ORGANIZATION_UPDATE_FORBIDDEN",
-                "Only organization owners and administrators can update organization settings.",
+                "Only the organization owner can update organization settings.",
             );
         }
 
@@ -524,9 +517,19 @@ export async function PATCH(
             updateMizan.currency = currency;
         }
 
+        // =====================================================
+        // 12. Ensure there are changes
+        // =====================================================
+
+        const hasMizanChanges =
+            Object.keys(updateMizan).length > 0;
+
+        const hasAuthChanges =
+            Object.keys(updateAuth).length > 0;
+
         if (
-            Object.keys(updateMizan).length === 0 &&
-            Object.keys(updateAuth).length === 0
+            !hasMizanChanges &&
+            !hasAuthChanges
         ) {
             return apiError(
                 422,
@@ -536,23 +539,37 @@ export async function PATCH(
         }
 
         // =====================================================
-        // 12. Update Better Auth organization
+        // 13. Update Better Auth organization
         // =====================================================
 
-        let authOrganization = null;
+        let authOrganization:
+            Awaited<
+                ReturnType<
+                    typeof auth.api.updateOrganization
+                >
+            > | null = null;
 
-        if (Object.keys(updateAuth).length > 0) {
+        if (hasAuthChanges) {
             try {
-                authOrganization =
+                const result =
                     await auth.api.updateOrganization({
                         body: {
                             organizationId:
                             authOrganizationId,
-
                             data: updateAuth,
                         },
                         headers,
                     });
+
+                if (!result) {
+                    return apiError(
+                        500,
+                        "AUTH_ORGANIZATION_UPDATE_FAILED",
+                        "The authentication organization could not be updated.",
+                    );
+                }
+
+                authOrganization = result;
             } catch (error) {
                 console.error(
                     "[Mizan DZ] Better Auth organization update failed:",
@@ -564,7 +581,9 @@ export async function PATCH(
 
                 if (
                     /slug/i.test(message) &&
-                    /exist|unique|duplicate/i.test(message)
+                    /exist|unique|duplicate/i.test(
+                        message,
+                    )
                 ) {
                     return apiError(
                         409,
@@ -577,7 +596,8 @@ export async function PATCH(
                     400,
                     "AUTH_ORGANIZATION_UPDATE_FAILED",
                     "Unable to update the authentication organization.",
-                    process.env.NODE_ENV === "development"
+                    process.env.NODE_ENV ===
+                    "development"
                         ? message
                         : undefined,
                 );
@@ -585,13 +605,13 @@ export async function PATCH(
         }
 
         // =====================================================
-        // 13. Update Mizan organization
+        // 14. Update Mizan organization
         // =====================================================
 
         let mizanOrganization =
             current.organization;
 
-        if (Object.keys(updateMizan).length > 0) {
+        if (hasMizanChanges) {
             try {
                 const [updated] =
                     await db
@@ -624,12 +644,17 @@ export async function PATCH(
                     500,
                     "MIZAN_ORGANIZATION_UPDATE_FAILED",
                     "Unable to update organization data.",
-                    process.env.NODE_ENV === "development"
+                    process.env.NODE_ENV ===
+                    "development"
                         ? getErrorMessage(error)
                         : undefined,
                 );
             }
         }
+
+        // =====================================================
+        // 15. Return updated organization
+        // =====================================================
 
         return apiSuccess({
             organization: mizanOrganization,
@@ -676,10 +701,9 @@ export async function DELETE() {
         // 1. Resolve active organization
         // =====================================================
 
-        const session =
-            await auth.api.getSession({
-                headers,
-            });
+        const session = await auth.api.getSession({
+            headers,
+        });
 
         if (!session?.session) {
             return apiError(
@@ -704,34 +728,32 @@ export async function DELETE() {
         // 2. Find current organization
         // =====================================================
 
-        const rows =
-            await db
-                .select({
-                    organization: organizations,
-                    membership: members,
-                })
-                .from(members)
-                .innerJoin(
-                    organizations,
-                    eq(
-                        members.organizationId,
-                        organizations.id,
-                    ),
-                )
-                .where(
-                    eq(
-                        members.userId,
-                        user.id,
-                    ),
-                );
-
-        const current =
-            rows.find(
-                (row) =>
-                    row.organization.authOrganizationId ===
-                    authOrganizationId &&
-                    row.organization.deletedAt === null,
+        const rows = await db
+            .select({
+                organization: organizations,
+                membership: members,
+            })
+            .from(members)
+            .innerJoin(
+                organizations,
+                eq(
+                    members.organizationId,
+                    organizations.id,
+                ),
+            )
+            .where(
+                eq(
+                    members.userId,
+                    user.id,
+                ),
             );
+
+        const current = rows.find(
+            (row) =>
+                row.organization.authOrganizationId ===
+                authOrganizationId &&
+                row.organization.deletedAt === null,
+        );
 
         if (!current) {
             return apiError(
@@ -775,7 +797,8 @@ export async function DELETE() {
                 400,
                 "AUTH_ORGANIZATION_DELETE_FAILED",
                 "Unable to delete the authentication organization.",
-                process.env.NODE_ENV === "development"
+                process.env.NODE_ENV ===
+                "development"
                     ? getErrorMessage(error)
                     : undefined,
             );
@@ -807,7 +830,8 @@ export async function DELETE() {
                 500,
                 "MIZAN_ORGANIZATION_DELETE_FAILED",
                 "The authentication organization was deleted, but the Mizan organization could not be archived.",
-                process.env.NODE_ENV === "development"
+                process.env.NODE_ENV ===
+                "development"
                     ? getErrorMessage(error)
                     : undefined,
             );

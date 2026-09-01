@@ -40,7 +40,9 @@ export default function ProfileModal({
         }
 
         previousActiveElementRef.current =
-            document.activeElement as HTMLElement | null;
+            document.activeElement as
+                | HTMLElement
+                | null;
 
         const previousOverflow =
             document.body.style.overflow;
@@ -80,6 +82,8 @@ export default function ProfileModal({
     if (!open) {
         return null;
     }
+
+
 
     return (
         <div
@@ -131,7 +135,9 @@ export default function ProfileModal({
                         </div>
 
                         <button
-                            ref={closeButtonRef}
+                            ref={
+                                closeButtonRef
+                            }
                             type="button"
                             onClick={onClose}
                             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--text-muted)] transition hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
@@ -153,18 +159,11 @@ export default function ProfileModal({
                             }
                         />
 
-                        <ProfileItem
-                            icon={Phone}
-                            label="Business phone"
-                            value={
-                                data.organization
-                                    .phone ||
-                                "Not provided"
-                            }
-                        />
 
                         <ProfileItem
-                            icon={Building2}
+                            icon={
+                                Building2
+                            }
                             label="Business"
                             value={
                                 data.organization
@@ -193,8 +192,7 @@ export default function ProfileModal({
 
                                 <p className="mt-1 text-2xl font-bold tracking-[-0.04em] text-[var(--text-primary)]">
                                     {
-                                        data
-                                            .profile
+                                        data.profile
                                             .percentage
                                     }
                                     %
@@ -222,7 +220,14 @@ export default function ProfileModal({
                             <div
                                 className="h-full rounded-full bg-[var(--primary)] transition-all duration-500"
                                 style={{
-                                    width: `${data.profile.percentage}%`,
+                                    width: `${Math.min(
+                                        100,
+                                        Math.max(
+                                            0,
+                                            data.profile
+                                                .percentage,
+                                        ),
+                                    )}%`,
                                 }}
                             />
                         </div>
@@ -308,7 +313,7 @@ function ProfileItem({
 
 function getInitials(
     name: string | null,
-) {
+): string {
     const value =
         name?.trim() || "M";
 

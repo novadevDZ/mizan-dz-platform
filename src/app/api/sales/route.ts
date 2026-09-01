@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import {NextRequest} from "next/server";
 
 import {
     and,
@@ -13,7 +13,7 @@ import {
     sql,
 } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import {db} from "@/src/db";
 
 import {
     customers,
@@ -39,6 +39,11 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
 type SaleStatus =
+    | "draft"
+    | "confirmed"
+    | "canceled";
+
+type SaleCreationStatus =
     | "draft"
     | "confirmed";
 
@@ -97,13 +102,11 @@ function createSaleError(
     message: string,
     status: number,
 ): SaleError {
-    const error =
-        new Error(
-            message,
-        ) as SaleError;
+    const error = new Error(
+        message,
+    ) as SaleError;
 
-    error.status =
-        status;
+    error.status = status;
 
     return error;
 }
@@ -114,8 +117,7 @@ function getErrorStatus(
     if (
         error instanceof Error &&
         "status" in error &&
-        typeof error.status ===
-        "number"
+        typeof error.status === "number"
     ) {
         return error.status;
     }
@@ -133,20 +135,13 @@ function parseInteger(
         return fallback;
     }
 
-    const parsed =
-        Number(value);
+    const parsed = Number(value);
 
-    if (
-        !Number.isInteger(
-            parsed,
-        )
-    ) {
+    if (!Number.isInteger(parsed)) {
         return fallback;
     }
 
-    if (
-        parsed < min
-    ) {
+    if (parsed < min) {
         return min;
     }
 
@@ -172,16 +167,13 @@ function parseMoneyToCents(
     value: unknown,
 ): number | null {
     if (
-        typeof value !==
-        "string" &&
-        typeof value !==
-        "number"
+        typeof value !== "string" &&
+        typeof value !== "number"
     ) {
         return null;
     }
 
-    const normalized =
-        String(value).trim();
+    const normalized = String(value).trim();
 
     if (
         !/^\d+(?:\.\d{1,2})?$/.test(
@@ -194,22 +186,13 @@ function parseMoneyToCents(
     const [
         whole,
         decimal = "",
-    ] =
-        normalized.split(".");
+    ] = normalized.split(".");
 
-    const cents =
-        Number(
-            `${whole}${decimal.padEnd(
-                2,
-                "0",
-            )}`,
-        );
+    const cents = Number(
+        `${whole}${decimal.padEnd(2, "0")}`,
+    );
 
-    if (
-        !Number.isSafeInteger(
-            cents,
-        )
-    ) {
+    if (!Number.isSafeInteger(cents)) {
         return null;
     }
 
@@ -219,9 +202,7 @@ function parseMoneyToCents(
 function centsToMoney(
     cents: number,
 ): string {
-    return (
-        cents / 100
-    ).toFixed(2);
+    return (cents / 100).toFixed(2);
 }
 
 /**
@@ -244,33 +225,24 @@ function parseDueAt(
         return null;
     }
 
-    if (
-        typeof value !==
-        "string"
-    ) {
+    if (typeof value !== "string") {
         throw createSaleError(
             "dueAt must be a valid ISO date string.",
             400,
         );
     }
 
-    const normalized =
-        value.trim();
+    const normalized = value.trim();
 
     if (!normalized) {
         return null;
     }
 
-    const parsed =
-        new Date(
-            normalized,
-        );
+    const parsed = new Date(
+        normalized,
+    );
 
-    if (
-        Number.isNaN(
-            parsed.getTime(),
-        )
-    ) {
+    if (Number.isNaN(parsed.getTime())) {
         throw createSaleError(
             "dueAt must be a valid ISO date.",
             400,
@@ -283,20 +255,12 @@ function parseDueAt(
 function generateInvoiceNumber(
     saleId: string,
 ): string {
-    const year =
-        new Date().getFullYear();
+    const year = new Date().getFullYear();
 
-    const shortId =
-        saleId
-            .replace(
-                /-/g,
-                "",
-            )
-            .slice(
-                0,
-                8,
-            )
-            .toUpperCase();
+    const shortId = saleId
+        .replace(/-/g, "")
+        .slice(0, 8)
+        .toUpperCase();
 
     return `INV-${year}-${shortId}`;
 }
@@ -306,25 +270,21 @@ function isUniqueViolation(
 ): boolean {
     if (
         !error ||
-        typeof error !==
-        "object"
+        typeof error !== "object"
     ) {
         return false;
     }
 
-    const candidate =
-        error as {
+    const candidate = error as {
+        code?: unknown;
+        cause?: {
             code?: unknown;
-            cause?: {
-                code?: unknown;
-            };
         };
+    };
 
     return (
-        candidate.code ===
-        "23505" ||
-        candidate.cause?.code ===
-        "23505"
+        candidate.code === "23505" ||
+        candidate.cause?.code === "23505"
     );
 }
 
@@ -338,19 +298,15 @@ function isUniqueViolation(
  * - Invoice
  * - Invoice Items
  *
- * Confirmed:
- * - stock decreases
- * - inventory movement is recorded
- * - invoice becomes issued
- *
  * Draft:
  * - stock remains unchanged
  * - no inventory movement
  * - invoice remains draft
  *
- * dueAt:
- * - validated
- * - persisted on invoices.dueAt
+ * Confirmed:
+ * - stock decreases
+ * - inventory movement is recorded
+ * - invoice becomes issued
  */
 export async function POST(
     request: NextRequest,
@@ -358,15 +314,12 @@ export async function POST(
     try {
         const {
             organizationId,
-        } =
-            await requirePermission(
-                "sales",
-                "create",
-            );
+        } = await requirePermission(
+            "sales",
+            "create",
+        );
 
-        if (
-            !organizationId
-        ) {
+        if (!organizationId) {
             return apiError(
                 "No active organization found.",
                 400,
@@ -377,8 +330,7 @@ export async function POST(
             await request.json();
 
         if (
-            typeof body !==
-            "object" ||
+            typeof body !== "object" ||
             body === null ||
             Array.isArray(body)
         ) {
@@ -413,20 +365,16 @@ export async function POST(
                 : "";
 
         const status:
-            | SaleStatus
+            | SaleCreationStatus
             | null =
-            input.status ===
-            "confirmed"
+            input.status === "confirmed"
                 ? "confirmed"
-                : input.status ===
-                "draft"
+                : input.status === "draft"
                     ? "draft"
                     : null;
 
         const rawItems =
-            Array.isArray(
-                input.items,
-            )
+            Array.isArray(input.items)
                 ? input.items
                 : null;
 
@@ -436,32 +384,23 @@ export async function POST(
          * ----------------------------------------------------------
          */
 
-        let dueAt:
-            Date | null = null;
+        let dueAt: Date | null = null;
 
         try {
-            dueAt =
-                parseDueAt(
-                    input.dueAt,
-                );
-        } catch (
-            error
-            ) {
+            dueAt = parseDueAt(
+                input.dueAt,
+            );
+        } catch (error) {
             if (
-                error instanceof
-                Error &&
-                "status" in
-                error &&
+                error instanceof Error &&
+                "status" in error &&
                 typeof (
                     error as SaleError
-                ).status ===
-                "number"
+                ).status === "number"
             ) {
                 return apiError(
                     error.message,
-                    (
-                        error as SaleError
-                    ).status!,
+                    (error as SaleError).status!,
                 );
             }
 
@@ -484,10 +423,7 @@ export async function POST(
             );
         }
 
-        if (
-            saleNumber.length >
-            50
-        ) {
+        if (saleNumber.length > 50) {
             return apiError(
                 "Sale number must not exceed 50 characters.",
                 400,
@@ -496,9 +432,7 @@ export async function POST(
 
         if (
             !customerId ||
-            !isValidUuid(
-                customerId,
-            )
+            !isValidUuid(customerId)
         ) {
             return apiError(
                 "A valid customer ID is required.",
@@ -515,8 +449,7 @@ export async function POST(
 
         if (
             !rawItems ||
-            rawItems.length ===
-            0
+            rawItems.length === 0
         ) {
             return apiError(
                 "At least one sale item is required.",
@@ -532,8 +465,7 @@ export async function POST(
 
         if (
             dueAt &&
-            dueAt.getTime() <
-            Date.now()
+            dueAt.getTime() < Date.now()
         ) {
             return apiError(
                 "Due date cannot be in the past.",
@@ -547,11 +479,10 @@ export async function POST(
          * ----------------------------------------------------------
          */
 
-        const parsedItems:
-            Array<{
-                productId: string;
-                quantity: number;
-            }> = [];
+        const parsedItems: Array<{
+            productId: string;
+            quantity: number;
+        }> = [];
 
         const productIds =
             new Set<string>();
@@ -561,12 +492,9 @@ export async function POST(
             rawItems as SaleItemInput[]
             ) {
             if (
-                typeof rawItem !==
-                "object" ||
+                typeof rawItem !== "object" ||
                 rawItem === null ||
-                Array.isArray(
-                    rawItem,
-                )
+                Array.isArray(rawItem)
             ) {
                 return apiError(
                     "Invalid sale item.",
@@ -585,16 +513,12 @@ export async function POST(
                 "string" ||
                 typeof rawItem.quantity ===
                 "number"
-                    ? Number(
-                        rawItem.quantity,
-                    )
+                    ? Number(rawItem.quantity)
                     : NaN;
 
             if (
                 !productId ||
-                !isValidUuid(
-                    productId,
-                )
+                !isValidUuid(productId)
             ) {
                 return apiError(
                     "Invalid product ID.",
@@ -603,9 +527,7 @@ export async function POST(
             }
 
             if (
-                !Number.isInteger(
-                    quantity,
-                ) ||
+                !Number.isInteger(quantity) ||
                 quantity <= 0
             ) {
                 return apiError(
@@ -615,9 +537,7 @@ export async function POST(
             }
 
             if (
-                productIds.has(
-                    productId,
-                )
+                productIds.has(productId)
             ) {
                 return apiError(
                     "A product cannot appear more than once in the same sale.",
@@ -625,9 +545,7 @@ export async function POST(
                 );
             }
 
-            productIds.add(
-                productId,
-            );
+            productIds.add(productId);
 
             parsedItems.push({
                 productId,
@@ -643,48 +561,35 @@ export async function POST(
 
         const result =
             await db.transaction(
-                async (
-                    tx,
-                ) => {
+                async (tx) => {
                     /*
                      * 1. Validate customer
                      */
 
-                    const [
-                        customer,
-                    ] =
+                    const [customer] =
                         await tx
                             .select({
-                                id:
-                                customers.id,
+                                id: customers.id,
                             })
-                            .from(
-                                customers,
-                            )
+                            .from(customers)
                             .where(
                                 and(
                                     eq(
                                         customers.id,
                                         customerId,
                                     ),
-
                                     eq(
                                         customers.organizationId,
                                         organizationId,
                                     ),
-
                                     isNull(
                                         customers.deletedAt,
                                     ),
                                 ),
                             )
-                            .limit(
-                                1,
-                            );
+                            .limit(1);
 
-                    if (
-                        !customer
-                    ) {
+                    if (!customer) {
                         throw createSaleError(
                             "Customer not found.",
                             404,
@@ -700,32 +605,24 @@ export async function POST(
                     ] =
                         await tx
                             .select({
-                                id:
-                                sales.id,
+                                id: sales.id,
                             })
-                            .from(
-                                sales,
-                            )
+                            .from(sales)
                             .where(
                                 and(
                                     eq(
                                         sales.organizationId,
                                         organizationId,
                                     ),
-
                                     eq(
                                         sales.saleNumber,
                                         saleNumber,
                                     ),
                                 ),
                             )
-                            .limit(
-                                1,
-                            );
+                            .limit(1);
 
-                    if (
-                        existingSale
-                    ) {
+                    if (existingSale) {
                         throw createSaleError(
                             `Sale number "${saleNumber}" already exists.`,
                             409,
@@ -734,17 +631,12 @@ export async function POST(
 
                     /*
                      * 3. Load products
-                     *
-                     * purchasePrice is loaded because
-                     * the inventory movement stores a
-                     * cost snapshot.
                      */
 
                     const fetchedProducts =
                         await tx
                             .select({
-                                id:
-                                products.id,
+                                id: products.id,
 
                                 name:
                                 products.name,
@@ -758,23 +650,19 @@ export async function POST(
                                 stockQuantity:
                                 products.stockQuantity,
                             })
-                            .from(
-                                products,
-                            )
+                            .from(products)
                             .where(
                                 and(
                                     eq(
                                         products.organizationId,
                                         organizationId,
                                     ),
-
                                     inArray(
                                         products.id,
                                         Array.from(
                                             productIds,
                                         ),
                                     ),
-
                                     isNull(
                                         products.deletedAt,
                                     ),
@@ -794,9 +682,7 @@ export async function POST(
                     const productMap =
                         new Map(
                             fetchedProducts.map(
-                                (
-                                    product,
-                                ) => [
+                                (product) => [
                                     product.id,
                                     product,
                                 ],
@@ -807,23 +693,18 @@ export async function POST(
                      * 4. Calculate totals
                      */
 
-                    let totalCents =
-                        0;
+                    let totalCents = 0;
 
                     const preparedItems:
                         PreparedSaleItem[] =
                         parsedItems.map(
-                            (
-                                item,
-                            ) => {
+                            (item) => {
                                 const product =
                                     productMap.get(
                                         item.productId,
                                     );
 
-                                if (
-                                    !product
-                                ) {
+                                if (!product) {
                                     throw createSaleError(
                                         "Product not found.",
                                         404,
@@ -838,8 +719,7 @@ export async function POST(
                                 if (
                                     unitPriceCents ===
                                     null ||
-                                    unitPriceCents <
-                                    0
+                                    unitPriceCents < 0
                                 ) {
                                     throw createSaleError(
                                         `Invalid selling price for product "${product.name}".`,
@@ -906,9 +786,7 @@ export async function POST(
                             insertedSale,
                         ] =
                             await tx
-                                .insert(
-                                    sales,
-                                )
+                                .insert(sales)
                                 .values({
                                     organizationId,
 
@@ -924,8 +802,7 @@ export async function POST(
                                         ),
                                 })
                                 .returning({
-                                    id:
-                                    sales.id,
+                                    id: sales.id,
 
                                     organizationId:
                                     sales.organizationId,
@@ -951,13 +828,9 @@ export async function POST(
                                     updatedAt:
                                     sales.updatedAt,
                                 });
-                    } catch (
-                        error
-                        ) {
+                    } catch (error) {
                         if (
-                            isUniqueViolation(
-                                error,
-                            )
+                            isUniqueViolation(error)
                         ) {
                             throw createSaleError(
                                 `Sale number "${saleNumber}" already exists.`,
@@ -968,9 +841,7 @@ export async function POST(
                         throw error;
                     }
 
-                    if (
-                        !insertedSale
-                    ) {
+                    if (!insertedSale) {
                         throw createSaleError(
                             "Failed to create sale.",
                             500,
@@ -979,17 +850,17 @@ export async function POST(
 
                     /*
                      * 6. Create sale items
+                     *
+                     * quantity is stored as a PostgreSQL
+                     * numeric column and Drizzle expects
+                     * a string representation.
                      */
 
                     await tx
-                        .insert(
-                            saleItems,
-                        )
+                        .insert(saleItems)
                         .values(
                             preparedItems.map(
-                                (
-                                    item,
-                                ) => ({
+                                (item) => ({
                                     saleId:
                                     insertedSale!.id,
 
@@ -997,7 +868,9 @@ export async function POST(
                                     item.productId,
 
                                     quantity:
-                                    item.quantity,
+                                        String(
+                                            item.quantity,
+                                        ),
 
                                     unitPrice:
                                         centsToMoney(
@@ -1013,21 +886,11 @@ export async function POST(
                         );
 
                     /*
-                     * 7. Confirmed sale
-                     *
-                     * The only new inventory behavior.
-                     *
-                     * Draft:
-                     *   nothing happens.
-                     *
-                     * Confirmed:
-                     *   stock decreases
-                     *   inventory movement is recorded
+                     * 7. Confirmed sale inventory handling
                      */
 
                     if (
-                        status ===
-                        "confirmed"
+                        status === "confirmed"
                     ) {
                         for (
                             const item of
@@ -1036,16 +899,15 @@ export async function POST(
                             /*
                              * Atomic stock decrement.
                              *
-                             * The WHERE condition ensures
-                             * stock can never become negative.
+                             * The WHERE clause prevents
+                             * negative stock.
                              */
+
                             const [
                                 updatedProduct,
                             ] =
                                 await tx
-                                    .update(
-                                        products,
-                                    )
+                                    .update(products)
                                     .set({
                                         stockQuantity:
                                             sql`
@@ -1099,10 +961,6 @@ export async function POST(
                                 );
                             }
 
-                            /*
-                             * Updated stock is the
-                             * new balance.
-                             */
                             const balanceAfter =
                                 Number(
                                     updatedProduct
@@ -1117,11 +975,9 @@ export async function POST(
                                 quantityChange;
 
                             /*
-                             * Record inventory event.
-                             *
-                             * This creates the audit trail
-                             * for the Inventory Tracker.
+                             * Record inventory movement.
                              */
+
                             const [
                                 movement,
                             ] =
@@ -1142,41 +998,41 @@ export async function POST(
                                             "sale",
 
                                         referenceId:
-                                        insertedSale!.id,
+                                        insertedSale.id,
 
                                         quantity:
-                                        item.quantity,
+                                            String(
+                                                item.quantity,
+                                            ),
 
+                                        quantityChange:
                                         quantityChange,
 
+                                        balanceBefore:
                                         balanceBefore,
 
+                                        balanceAfter:
                                         balanceAfter,
 
-                                        /*
-                                         * Cost snapshot
-                                         * at sale time.
-                                         */
                                         unitCost:
-                                        updatedProduct.purchasePrice,
+                                        updatedProduct
+                                            .purchasePrice,
 
                                         reason:
-                                            `Sale ${insertedSale!.saleNumber}`,
+                                            `Sale ${insertedSale.saleNumber}`,
 
                                         referenceNumber:
-                                        insertedSale!.saleNumber,
+                                        insertedSale.saleNumber,
 
                                         createdBy:
-                                        insertedSale!.createdBy,
+                                        insertedSale.createdBy,
                                     })
                                     .returning({
                                         id:
                                         inventoryMovements.id,
                                     });
 
-                            if (
-                                !movement
-                            ) {
+                            if (!movement) {
                                 throw createSaleError(
                                     "Failed to create inventory movement.",
                                     500,
@@ -1190,13 +1046,11 @@ export async function POST(
                      */
 
                     const invoiceStatus =
-                        status ===
-                        "confirmed"
+                        status === "confirmed"
                             ? "issued"
                             : "draft";
 
-                    const now =
-                        new Date();
+                    const now = new Date();
 
                     const invoiceNumber =
                         generateInvoiceNumber(
@@ -1212,9 +1066,7 @@ export async function POST(
                             insertedInvoice,
                         ] =
                             await tx
-                                .insert(
-                                    invoices,
-                                )
+                                .insert(invoices)
                                 .values({
                                     organizationId:
                                     insertedSale.organizationId,
@@ -1251,18 +1103,14 @@ export async function POST(
                                             totalCents,
                                         ),
 
-                                    notes:
-                                        null,
+                                    notes: null,
 
-                                    createdAt:
-                                    now,
+                                    createdAt: now,
 
-                                    updatedAt:
-                                    now,
+                                    updatedAt: now,
                                 })
                                 .returning({
-                                    id:
-                                    invoices.id,
+                                    id: invoices.id,
 
                                     organizationId:
                                     invoices.organizationId,
@@ -1303,13 +1151,9 @@ export async function POST(
                                     updatedAt:
                                     invoices.updatedAt,
                                 });
-                    } catch (
-                        error
-                        ) {
+                    } catch (error) {
                         if (
-                            isUniqueViolation(
-                                error,
-                            )
+                            isUniqueViolation(error)
                         ) {
                             throw createSaleError(
                                 `Invoice number "${invoiceNumber}" already exists.`,
@@ -1320,9 +1164,7 @@ export async function POST(
                         throw error;
                     }
 
-                    if (
-                        !insertedInvoice
-                    ) {
+                    if (!insertedInvoice) {
                         throw createSaleError(
                             "Failed to create invoice.",
                             500,
@@ -1331,17 +1173,16 @@ export async function POST(
 
                     /*
                      * 9. Create invoice items
+                     *
+                     * numeric quantity values must be
+                     * provided as strings to Drizzle.
                      */
 
                     await tx
-                        .insert(
-                            invoiceItems,
-                        )
+                        .insert(invoiceItems)
                         .values(
                             preparedItems.map(
-                                (
-                                    item,
-                                ) => ({
+                                (item) => ({
                                     invoiceId:
                                     insertedInvoice!.id,
 
@@ -1355,7 +1196,9 @@ export async function POST(
                                         null,
 
                                     quantity:
-                                    item.quantity,
+                                        String(
+                                            item.quantity,
+                                        ),
 
                                     unitPrice:
                                         centsToMoney(
@@ -1377,8 +1220,7 @@ export async function POST(
                     const response:
                         CreateSaleResult =
                         {
-                            sale:
-                            insertedSale,
+                            sale: insertedSale,
 
                             invoice:
                             insertedInvoice,
@@ -1397,26 +1239,18 @@ export async function POST(
             result,
             201,
         );
-    } catch (
-        error
-        ) {
+    } catch (error) {
         console.error(
             "[POST /api/sales]",
             error,
         );
 
         const status =
-            getErrorStatus(
-                error,
-            );
+            getErrorStatus(error);
 
-        if (
-            status !==
-            null
-        ) {
+        if (status !== null) {
             return apiError(
-                error instanceof
-                Error
+                error instanceof Error
                     ? error.message
                     : "Request failed.",
                 status,
@@ -1445,9 +1279,7 @@ export async function GET(
                 "read",
             );
 
-        if (
-            !organizationId
-        ) {
+        if (!organizationId) {
             return apiError(
                 "No active organization found.",
                 400,
@@ -1455,44 +1287,33 @@ export async function GET(
         }
 
         const params =
-            request.nextUrl
-                .searchParams;
+            request.nextUrl.searchParams;
 
         const search =
             params
-                .get(
-                    "search",
-                )
-                ?.trim() ??
-            "";
+                .get("search")
+                ?.trim() ?? "";
 
         const status =
-            params.get(
-                "status",
-            );
+            params.get("status");
 
         const page =
             parseInteger(
-                params.get(
-                    "page",
-                ),
+                params.get("page"),
                 DEFAULT_PAGE,
                 1,
             );
 
         const limit =
             parseInteger(
-                params.get(
-                    "limit",
-                ),
+                params.get("limit"),
                 DEFAULT_LIMIT,
                 1,
                 MAX_LIMIT,
             );
 
         const offset =
-            (page - 1) *
-            limit;
+            (page - 1) * limit;
 
         const filters = [
             eq(
@@ -1502,10 +1323,9 @@ export async function GET(
         ];
 
         if (
-            status ===
-            "draft" ||
-            status ===
-            "confirmed"
+            status === "draft" ||
+            status === "confirmed" ||
+            status === "canceled"
         ) {
             filters.push(
                 eq(
@@ -1522,7 +1342,6 @@ export async function GET(
                         sales.saleNumber,
                         `%${search}%`,
                     ),
-
                     ilike(
                         customers.name,
                         `%${search}%`,
@@ -1532,113 +1351,93 @@ export async function GET(
         }
 
         const whereClause =
-            and(
-                ...filters,
-            );
+            and(...filters);
 
         const [
             items,
             countResult,
-        ] =
-            await Promise.all([
-                db
-                    .select({
-                        id:
-                        sales.id,
+        ] = await Promise.all([
+            db
+                .select({
+                    id:
+                    sales.id,
 
-                        saleNumber:
-                        sales.saleNumber,
+                    saleNumber:
+                    sales.saleNumber,
 
-                        customerId:
-                        sales.customerId,
+                    customerId:
+                    sales.customerId,
 
-                        customerName:
-                        customers.name,
+                    customerName:
+                    customers.name,
 
-                        status:
-                        sales.status,
+                    status:
+                    sales.status,
 
-                        totalAmount:
-                        sales.totalAmount,
+                    totalAmount:
+                    sales.totalAmount,
 
-                        createdAt:
+                    createdAt:
+                    sales.createdAt,
+
+                    updatedAt:
+                    sales.updatedAt,
+                })
+                .from(sales)
+                .leftJoin(
+                    customers,
+                    and(
+                        eq(
+                            customers.id,
+                            sales.customerId,
+                        ),
+                        eq(
+                            customers.organizationId,
+                            organizationId,
+                        ),
+                    ),
+                )
+                .where(whereClause)
+                .orderBy(
+                    desc(
                         sales.createdAt,
-
-                        updatedAt:
-                        sales.updatedAt,
-                    })
-                    .from(
-                        sales,
-                    )
-                    .leftJoin(
-                        customers,
-                        and(
-                            eq(
-                                customers.id,
-                                sales.customerId,
-                            ),
-
-                            eq(
-                                customers.organizationId,
-                                organizationId,
-                            ),
-                        ),
-                    )
-                    .where(
-                        whereClause,
-                    )
-                    .orderBy(
-                        desc(
-                            sales.createdAt,
-                        ),
-                    )
-                    .limit(
-                        limit,
-                    )
-                    .offset(
-                        offset,
                     ),
+                )
+                .limit(limit)
+                .offset(offset),
 
-                db
-                    .select({
-                        total:
-                            count(),
-                    })
-                    .from(
-                        sales,
-                    )
-                    .leftJoin(
-                        customers,
-                        and(
-                            eq(
-                                customers.id,
-                                sales.customerId,
-                            ),
-
-                            eq(
-                                customers.organizationId,
-                                organizationId,
-                            ),
+            db
+                .select({
+                    total:
+                        count(),
+                })
+                .from(sales)
+                .leftJoin(
+                    customers,
+                    and(
+                        eq(
+                            customers.id,
+                            sales.customerId,
                         ),
-                    )
-                    .where(
-                        whereClause,
+                        eq(
+                            customers.organizationId,
+                            organizationId,
+                        ),
                     ),
-            ]);
+                )
+                .where(whereClause),
+        ]);
 
         const total =
             Number(
-                countResult[0]
-                    ?.total ??
-                0,
+                countResult[0]?.total ?? 0,
             );
 
         const totalPages =
             total === 0
                 ? 0
                 : Math.ceil(
-                    total /
-                    limit,
+                    total / limit,
                 );
 
         return apiSuccess({
@@ -1654,34 +1453,24 @@ export async function GET(
                 totalPages,
 
                 hasNextPage:
-                    page <
-                    totalPages,
+                    page < totalPages,
 
                 hasPreviousPage:
-                    page >
-                    1,
+                    page > 1,
             },
         });
-    } catch (
-        error
-        ) {
+    } catch (error) {
         console.error(
             "[GET /api/sales]",
             error,
         );
 
         const status =
-            getErrorStatus(
-                error,
-            );
+            getErrorStatus(error);
 
-        if (
-            status !==
-            null
-        ) {
+        if (status !== null) {
             return apiError(
-                error instanceof
-                Error
+                error instanceof Error
                     ? error.message
                     : "Request failed.",
                 status,

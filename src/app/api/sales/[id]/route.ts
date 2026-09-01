@@ -1,18 +1,19 @@
-import { NextRequest } from "next/server";
+import {NextRequest} from "next/server";
 import {
     and,
     eq,
     inArray,
+    isNull,
 } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import {db} from "@/src/db";
 
-import { sales } from "@/src/db/schema";
-import { saleItems } from "@/src/db/schema";
-import { products } from "@/src/db/schema";
-import { customers } from "@/src/db/schema";
+import {sales} from "@/src/db/schema";
+import {saleItems} from "@/src/db/schema";
+import {products} from "@/src/db/schema";
+import {customers} from "@/src/db/schema";
 
-import { requirePermission } from "@/src/lib/require-permission";
+import {requirePermission} from "@/src/lib/require-permission";
 
 import {
     apiError,
@@ -41,7 +42,7 @@ function getErrorStatus(
 
 function isValidUuid(
     value: string,
-) {
+): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         value,
     );
@@ -82,7 +83,7 @@ function parseMoneyToCents(
 
 function centsToMoney(
     cents: number,
-) {
+): string {
     return (
         cents / 100
     ).toFixed(2);
@@ -103,7 +104,7 @@ export async function GET(
             "read",
         );
 
-        const { id } =
+        const {id} =
             await context.params;
 
         if (!isValidUuid(id)) {
@@ -166,7 +167,7 @@ export async function GET(
         }
 
         /*
-         * Do not filter deletedAt here.
+         * Do not filter deleted products here.
          *
          * A product may have been archived after
          * the sale was created. Historical sale data
@@ -253,7 +254,7 @@ export async function PATCH(
             "update",
         );
 
-        const { id } =
+        const {id} =
             await context.params;
 
         if (!isValidUuid(id)) {
@@ -316,7 +317,9 @@ export async function PATCH(
                             new Error(
                                 "Sale not found.",
                             ),
-                            { status: 404 },
+                            {
+                                status: 404,
+                            },
                         );
                     }
 
@@ -328,7 +331,9 @@ export async function PATCH(
                             new Error(
                                 "Only draft sales can be updated.",
                             ),
-                            { status: 409 },
+                            {
+                                status: 409,
+                            },
                         );
                     }
 
@@ -339,7 +344,9 @@ export async function PATCH(
                             new Error(
                                 "Use the confirm or cancel endpoint to change sale status.",
                             ),
-                            { status: 400 },
+                            {
+                                status: 400,
+                            },
                         );
                     }
 
@@ -363,7 +370,9 @@ export async function PATCH(
                                 new Error(
                                     "Sale number must be a non-empty string.",
                                 ),
-                                { status: 400 },
+                                {
+                                    status: 400,
+                                },
                             );
                         }
 
@@ -378,7 +387,9 @@ export async function PATCH(
                                 new Error(
                                     "Sale number must not exceed 50 characters.",
                                 ),
-                                { status: 400 },
+                                {
+                                    status: 400,
+                                },
                             );
                         }
 
@@ -398,7 +409,9 @@ export async function PATCH(
                                 new Error(
                                     "Invalid customer ID.",
                                 ),
-                                { status: 400 },
+                                {
+                                    status: 400,
+                                },
                             );
                         }
 
@@ -414,13 +427,13 @@ export async function PATCH(
                                 new Error(
                                     "Invalid customer ID.",
                                 ),
-                                { status: 400 },
+                                {
+                                    status: 400,
+                                },
                             );
                         }
 
-                        const [
-                            customer,
-                        ] =
+                        const [customer] =
                             await tx
                                 .select({
                                     id:
@@ -448,7 +461,9 @@ export async function PATCH(
                                 new Error(
                                     "Customer not found.",
                                 ),
-                                { status: 404 },
+                                {
+                                    status: 404,
+                                },
                             );
                         }
 
@@ -461,13 +476,16 @@ export async function PATCH(
                             !Array.isArray(
                                 input.items,
                             ) ||
-                            input.items.length === 0
+                            input.items.length ===
+                            0
                         ) {
                             throw Object.assign(
                                 new Error(
                                     "At least one sale item is required.",
                                 ),
-                                { status: 400 },
+                                {
+                                    status: 400,
+                                },
                             );
                         }
 
@@ -495,7 +513,9 @@ export async function PATCH(
                                     new Error(
                                         "Invalid sale item.",
                                     ),
-                                    { status: 400 },
+                                    {
+                                        status: 400,
+                                    },
                                 );
                             }
 
@@ -530,7 +550,9 @@ export async function PATCH(
                                     new Error(
                                         "Invalid product ID.",
                                     ),
-                                    { status: 400 },
+                                    {
+                                        status: 400,
+                                    },
                                 );
                             }
 
@@ -544,7 +566,9 @@ export async function PATCH(
                                     new Error(
                                         "Sale quantity must be a positive integer.",
                                     ),
-                                    { status: 400 },
+                                    {
+                                        status: 400,
+                                    },
                                 );
                             }
 
@@ -557,7 +581,9 @@ export async function PATCH(
                                     new Error(
                                         "A product cannot appear more than once in the same sale.",
                                     ),
-                                    { status: 400 },
+                                    {
+                                        status: 400,
+                                    },
                                 );
                             }
 
@@ -594,9 +620,8 @@ export async function PATCH(
                                                 productIds,
                                             ),
                                         ),
-                                        eq(
+                                        isNull(
                                             products.deletedAt,
-                                            null,
                                         ),
                                     ),
                                 );
@@ -609,7 +634,9 @@ export async function PATCH(
                                 new Error(
                                     "One or more products were not found or are archived.",
                                 ),
-                                { status: 404 },
+                                {
+                                    status: 404,
+                                },
                             );
                         }
 
@@ -648,7 +675,9 @@ export async function PATCH(
                                     new Error(
                                         "Product not found.",
                                     ),
-                                    { status: 404 },
+                                    {
+                                        status: 404,
+                                    },
                                 );
                             }
 
@@ -664,7 +693,9 @@ export async function PATCH(
                                     new Error(
                                         "Invalid product selling price.",
                                     ),
-                                    { status: 500 },
+                                    {
+                                        status: 500,
+                                    },
                                 );
                             }
 
@@ -684,12 +715,21 @@ export async function PATCH(
                                     existing.id,
                                     productId:
                                     item.productId,
+
+                                    /*
+                                     * Drizzle infers numeric PostgreSQL
+                                     * columns as strings.
+                                     */
                                     quantity:
-                                    item.quantity,
+                                        String(
+                                            item.quantity,
+                                        ),
+
                                     unitPrice:
                                         centsToMoney(
                                             price,
                                         ),
+
                                     subtotal:
                                         centsToMoney(
                                             subtotal,
@@ -710,13 +750,16 @@ export async function PATCH(
                         Object.keys(
                             updateSale,
                         ).length === 1 &&
-                        "updatedAt" in updateSale
+                        "updatedAt" in
+                        updateSale
                     ) {
                         throw Object.assign(
                             new Error(
                                 "No fields to update.",
                             ),
-                            { status: 400 },
+                            {
+                                status: 400,
+                            },
                         );
                     }
 
@@ -763,7 +806,9 @@ export async function PATCH(
                             new Error(
                                 "Failed to update sale.",
                             ),
-                            { status: 500 },
+                            {
+                                status: 500,
+                            },
                         );
                     }
 
@@ -771,9 +816,7 @@ export async function PATCH(
                 },
             );
 
-        return apiSuccess(
-            result,
-        );
+        return apiSuccess(result);
     } catch (error) {
         console.error(
             "[PATCH /api/sales/:id]",
