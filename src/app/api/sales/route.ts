@@ -1,4 +1,4 @@
-import {NextRequest} from "next/server";
+import { NextRequest } from "next/server";
 
 import {
     and,
@@ -13,7 +13,7 @@ import {
     sql,
 } from "drizzle-orm";
 
-import {db} from "@/src/db";
+import { db } from "@/src/db";
 
 import {
     customers,
@@ -25,9 +25,7 @@ import {
     inventoryMovements,
 } from "@/src/db/schema";
 
-import {
-    requirePermission,
-} from "@/src/lib/require-permission";
+import { requirePermission } from "@/src/lib/require-permission";
 
 import {
     apiError,
@@ -39,13 +37,13 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
 type SaleStatus =
-    | "draft"
-    | "confirmed"
-    | "canceled";
+    typeof sales.$inferSelect.status;
 
 type SaleCreationStatus =
-    | "draft"
-    | "confirmed";
+    Extract<
+        SaleStatus,
+        "draft" | "confirmed"
+    >;
 
 type SaleItemInput = {
     productId: unknown;
@@ -102,9 +100,8 @@ function createSaleError(
     message: string,
     status: number,
 ): SaleError {
-    const error = new Error(
-        message,
-    ) as SaleError;
+    const error =
+        new Error(message) as SaleError;
 
     error.status = status;
 
@@ -173,7 +170,8 @@ function parseMoneyToCents(
         return null;
     }
 
-    const normalized = String(value).trim();
+    const normalized =
+        String(value).trim();
 
     if (
         !/^\d+(?:\.\d{1,2})?$/.test(
@@ -205,15 +203,6 @@ function centsToMoney(
     return (cents / 100).toFixed(2);
 }
 
-/**
- * Parse and validate invoice due date.
- *
- * Accepted:
- * - null
- * - undefined
- * - ""
- * - ISO date string
- */
 function parseDueAt(
     value: unknown,
 ): Date | null {
@@ -232,17 +221,21 @@ function parseDueAt(
         );
     }
 
-    const normalized = value.trim();
+    const normalized =
+        value.trim();
 
     if (!normalized) {
         return null;
     }
 
-    const parsed = new Date(
-        normalized,
-    );
+    const parsed =
+        new Date(normalized);
 
-    if (Number.isNaN(parsed.getTime())) {
+    if (
+        Number.isNaN(
+            parsed.getTime(),
+        )
+    ) {
         throw createSaleError(
             "dueAt must be a valid ISO date.",
             400,
@@ -255,12 +248,14 @@ function parseDueAt(
 function generateInvoiceNumber(
     saleId: string,
 ): string {
-    const year = new Date().getFullYear();
+    const year =
+        new Date().getFullYear();
 
-    const shortId = saleId
-        .replace(/-/g, "")
-        .slice(0, 8)
-        .toUpperCase();
+    const shortId =
+        saleId
+            .replace(/-/g, "")
+            .slice(0, 8)
+            .toUpperCase();
 
     return `INV-${year}-${shortId}`;
 }
@@ -275,37 +270,39 @@ function isUniqueViolation(
         return false;
     }
 
-    const candidate = error as {
-        code?: unknown;
-        cause?: {
+    const candidate =
+        error as {
             code?: unknown;
+            cause?: {
+                code?: unknown;
+            };
         };
-    };
 
     return (
-        candidate.code === "23505" ||
-        candidate.cause?.code === "23505"
+        candidate.code ===
+        "23505" ||
+        candidate.cause?.code ===
+        "23505"
     );
 }
 
 /**
  * POST /api/sales
  *
- * Atomically creates:
- *
+ * Creates atomically:
  * - Sale
- * - Sale Items
+ * - Sale items
  * - Invoice
- * - Invoice Items
+ * - Invoice items
  *
  * Draft:
- * - stock remains unchanged
+ * - stock unchanged
  * - no inventory movement
  * - invoice remains draft
  *
  * Confirmed:
  * - stock decreases
- * - inventory movement is recorded
+ * - inventory movement created
  * - invoice becomes issued
  */
 export async function POST(
@@ -314,10 +311,11 @@ export async function POST(
     try {
         const {
             organizationId,
-        } = await requirePermission(
-            "sales",
-            "create",
-        );
+        } =
+            await requirePermission(
+                "sales",
+                "create",
+            );
 
         if (!organizationId) {
             return apiError(
@@ -346,12 +344,6 @@ export async function POST(
                 unknown
             >;
 
-        /*
-         * ----------------------------------------------------------
-         * Basic fields
-         * ----------------------------------------------------------
-         */
-
         const saleNumber =
             typeof input.saleNumber ===
             "string"
@@ -367,40 +359,43 @@ export async function POST(
         const status:
             | SaleCreationStatus
             | null =
-            input.status === "confirmed"
+            input.status ===
+            "confirmed"
                 ? "confirmed"
-                : input.status === "draft"
+                : input.status ===
+                "draft"
                     ? "draft"
                     : null;
 
         const rawItems =
-            Array.isArray(input.items)
+            Array.isArray(
+                input.items,
+            )
                 ? input.items
                 : null;
 
-        /*
-         * ----------------------------------------------------------
-         * Due date
-         * ----------------------------------------------------------
-         */
-
-        let dueAt: Date | null = null;
+        let dueAt:
+            | Date
+            | null = null;
 
         try {
-            dueAt = parseDueAt(
-                input.dueAt,
-            );
+            dueAt =
+                parseDueAt(
+                    input.dueAt,
+                );
         } catch (error) {
+            const statusCode =
+                getErrorStatus(
+                    error,
+                );
+
             if (
-                error instanceof Error &&
-                "status" in error &&
-                typeof (
-                    error as SaleError
-                ).status === "number"
+                statusCode !== null &&
+                error instanceof Error
             ) {
                 return apiError(
                     error.message,
-                    (error as SaleError).status!,
+                    statusCode,
                 );
             }
 
@@ -410,12 +405,6 @@ export async function POST(
             );
         }
 
-        /*
-         * ----------------------------------------------------------
-         * Basic validation
-         * ----------------------------------------------------------
-         */
-
         if (!saleNumber) {
             return apiError(
                 "Sale number is required.",
@@ -423,7 +412,10 @@ export async function POST(
             );
         }
 
-        if (saleNumber.length > 50) {
+        if (
+            saleNumber.length >
+            50
+        ) {
             return apiError(
                 "Sale number must not exceed 50 characters.",
                 400,
@@ -432,7 +424,9 @@ export async function POST(
 
         if (
             !customerId ||
-            !isValidUuid(customerId)
+            !isValidUuid(
+                customerId,
+            )
         ) {
             return apiError(
                 "A valid customer ID is required.",
@@ -457,15 +451,10 @@ export async function POST(
             );
         }
 
-        /*
-         * ----------------------------------------------------------
-         * Due date business rule
-         * ----------------------------------------------------------
-         */
-
         if (
             dueAt &&
-            dueAt.getTime() < Date.now()
+            dueAt.getTime() <
+            Date.now()
         ) {
             return apiError(
                 "Due date cannot be in the past.",
@@ -473,16 +462,11 @@ export async function POST(
             );
         }
 
-        /*
-         * ----------------------------------------------------------
-         * Parse sale items
-         * ----------------------------------------------------------
-         */
-
-        const parsedItems: Array<{
-            productId: string;
-            quantity: number;
-        }> = [];
+        const parsedItems:
+            Array<{
+                productId: string;
+                quantity: number;
+            }> = [];
 
         const productIds =
             new Set<string>();
@@ -492,9 +476,12 @@ export async function POST(
             rawItems as SaleItemInput[]
             ) {
             if (
-                typeof rawItem !== "object" ||
+                typeof rawItem !==
+                "object" ||
                 rawItem === null ||
-                Array.isArray(rawItem)
+                Array.isArray(
+                    rawItem,
+                )
             ) {
                 return apiError(
                     "Invalid sale item.",
@@ -513,12 +500,16 @@ export async function POST(
                 "string" ||
                 typeof rawItem.quantity ===
                 "number"
-                    ? Number(rawItem.quantity)
+                    ? Number(
+                        rawItem.quantity,
+                    )
                     : NaN;
 
             if (
                 !productId ||
-                !isValidUuid(productId)
+                !isValidUuid(
+                    productId,
+                )
             ) {
                 return apiError(
                     "Invalid product ID.",
@@ -527,7 +518,9 @@ export async function POST(
             }
 
             if (
-                !Number.isInteger(quantity) ||
+                !Number.isInteger(
+                    quantity,
+                ) ||
                 quantity <= 0
             ) {
                 return apiError(
@@ -537,7 +530,9 @@ export async function POST(
             }
 
             if (
-                productIds.has(productId)
+                productIds.has(
+                    productId,
+                )
             ) {
                 return apiError(
                     "A product cannot appear more than once in the same sale.",
@@ -545,7 +540,9 @@ export async function POST(
                 );
             }
 
-            productIds.add(productId);
+            productIds.add(
+                productId,
+            );
 
             parsedItems.push({
                 productId,
@@ -553,25 +550,21 @@ export async function POST(
             });
         }
 
-        /*
-         * ----------------------------------------------------------
-         * Transaction
-         * ----------------------------------------------------------
-         */
-
         const result =
             await db.transaction(
                 async (tx) => {
-                    /*
+                    /**
                      * 1. Validate customer
                      */
-
                     const [customer] =
                         await tx
                             .select({
-                                id: customers.id,
+                                id:
+                                customers.id,
                             })
-                            .from(customers)
+                            .from(
+                                customers,
+                            )
                             .where(
                                 and(
                                     eq(
@@ -596,18 +589,20 @@ export async function POST(
                         );
                     }
 
-                    /*
-                     * 2. Check sale number
+                    /**
+                     * 2. Check duplicate sale number
                      */
-
                     const [
                         existingSale,
                     ] =
                         await tx
                             .select({
-                                id: sales.id,
+                                id:
+                                sales.id,
                             })
-                            .from(sales)
+                            .from(
+                                sales,
+                            )
                             .where(
                                 and(
                                     eq(
@@ -629,14 +624,14 @@ export async function POST(
                         );
                     }
 
-                    /*
+                    /**
                      * 3. Load products
                      */
-
                     const fetchedProducts =
                         await tx
                             .select({
-                                id: products.id,
+                                id:
+                                products.id,
 
                                 name:
                                 products.name,
@@ -650,7 +645,9 @@ export async function POST(
                                 stockQuantity:
                                 products.stockQuantity,
                             })
-                            .from(products)
+                            .from(
+                                products,
+                            )
                             .where(
                                 and(
                                     eq(
@@ -682,23 +679,27 @@ export async function POST(
                     const productMap =
                         new Map(
                             fetchedProducts.map(
-                                (product) => [
+                                (
+                                    product,
+                                ) => [
                                     product.id,
                                     product,
                                 ],
                             ),
                         );
 
-                    /*
-                     * 4. Calculate totals
+                    /**
+                     * 4. Prepare items and calculate total
                      */
-
-                    let totalCents = 0;
+                    let totalCents =
+                        0;
 
                     const preparedItems:
                         PreparedSaleItem[] =
                         parsedItems.map(
-                            (item) => {
+                            (
+                                item,
+                            ) => {
                                 const product =
                                     productMap.get(
                                         item.productId,
@@ -719,7 +720,8 @@ export async function POST(
                                 if (
                                     unitPriceCents ===
                                     null ||
-                                    unitPriceCents < 0
+                                    unitPriceCents <
+                                    0
                                 ) {
                                     throw createSaleError(
                                         `Invalid selling price for product "${product.name}".`,
@@ -773,73 +775,58 @@ export async function POST(
                             },
                         );
 
-                    /*
-                     * 5. Create sale
+                    /**
+                     * 5. Insert sale
                      */
+                    const [
+                        insertedSale,
+                    ] =
+                        await tx
+                            .insert(
+                                sales,
+                            )
+                            .values({
+                                organizationId,
 
-                    let insertedSale:
-                        | CreateSaleResult["sale"]
-                        | undefined;
+                                customerId,
 
-                    try {
-                        [
-                            insertedSale,
-                        ] =
-                            await tx
-                                .insert(sales)
-                                .values({
-                                    organizationId,
+                                saleNumber,
 
-                                    customerId,
+                                status,
 
-                                    saleNumber,
+                                totalAmount:
+                                    centsToMoney(
+                                        totalCents,
+                                    ),
+                            })
+                            .returning({
+                                id:
+                                sales.id,
 
-                                    status,
+                                organizationId:
+                                sales.organizationId,
 
-                                    totalAmount:
-                                        centsToMoney(
-                                            totalCents,
-                                        ),
-                                })
-                                .returning({
-                                    id: sales.id,
+                                customerId:
+                                sales.customerId,
 
-                                    organizationId:
-                                    sales.organizationId,
+                                saleNumber:
+                                sales.saleNumber,
 
-                                    customerId:
-                                    sales.customerId,
+                                status:
+                                sales.status,
 
-                                    saleNumber:
-                                    sales.saleNumber,
+                                totalAmount:
+                                sales.totalAmount,
 
-                                    status:
-                                    sales.status,
+                                createdBy:
+                                sales.createdBy,
 
-                                    totalAmount:
-                                    sales.totalAmount,
+                                createdAt:
+                                sales.createdAt,
 
-                                    createdBy:
-                                    sales.createdBy,
-
-                                    createdAt:
-                                    sales.createdAt,
-
-                                    updatedAt:
-                                    sales.updatedAt,
-                                });
-                    } catch (error) {
-                        if (
-                            isUniqueViolation(error)
-                        ) {
-                            throw createSaleError(
-                                `Sale number "${saleNumber}" already exists.`,
-                                409,
-                            );
-                        }
-
-                        throw error;
-                    }
+                                updatedAt:
+                                sales.updatedAt,
+                            });
 
                     if (!insertedSale) {
                         throw createSaleError(
@@ -848,29 +835,29 @@ export async function POST(
                         );
                     }
 
-                    /*
-                     * 6. Create sale items
+                    /**
+                     * 6. Insert sale items
                      *
-                     * quantity is stored as a PostgreSQL
-                     * numeric column and Drizzle expects
-                     * a string representation.
+                     * IMPORTANT:
+                     * saleItems.quantity is INTEGER.
                      */
-
                     await tx
-                        .insert(saleItems)
+                        .insert(
+                            saleItems,
+                        )
                         .values(
                             preparedItems.map(
-                                (item) => ({
+                                (
+                                    item,
+                                ) => ({
                                     saleId:
-                                    insertedSale!.id,
+                                    insertedSale.id,
 
                                     productId:
                                     item.productId,
 
                                     quantity:
-                                        String(
-                                            item.quantity,
-                                        ),
+                                    item.quantity,
 
                                     unitPrice:
                                         centsToMoney(
@@ -885,35 +872,31 @@ export async function POST(
                             ),
                         );
 
-                    /*
-                     * 7. Confirmed sale inventory handling
+                    /**
+                     * 7. Handle stock for confirmed sales
                      */
-
                     if (
-                        status === "confirmed"
+                        status ===
+                        "confirmed"
                     ) {
                         for (
                             const item of
                             preparedItems
                             ) {
-                            /*
+                            /**
                              * Atomic stock decrement.
-                             *
-                             * The WHERE clause prevents
-                             * negative stock.
                              */
-
                             const [
                                 updatedProduct,
                             ] =
                                 await tx
-                                    .update(products)
+                                    .update(
+                                        products,
+                                    )
                                     .set({
                                         stockQuantity:
                                             sql`
-                                                ${products.stockQuantity}
-                                                -
-                                                ${item.quantity}
+                                                ${products.stockQuantity} - ${item.quantity}
                                             `,
 
                                         updatedAt:
@@ -963,10 +946,27 @@ export async function POST(
 
                             const balanceAfter =
                                 Number(
-                                    updatedProduct
-                                        .stockQuantity,
+                                    updatedProduct.stockQuantity,
                                 );
 
+                            if (
+                                !Number.isInteger(
+                                    balanceAfter,
+                                )
+                            ) {
+                                throw createSaleError(
+                                    "Invalid resulting stock quantity.",
+                                    500,
+                                );
+                            }
+
+                            /**
+                             * Since the movement represents
+                             * a sale:
+                             *
+                             * quantity = sold quantity
+                             * quantityChange = negative
+                             */
                             const quantityChange =
                                 -item.quantity;
 
@@ -974,10 +974,30 @@ export async function POST(
                                 balanceAfter -
                                 quantityChange;
 
-                            /*
-                             * Record inventory movement.
-                             */
+                            if (
+                                !Number.isInteger(
+                                    balanceBefore,
+                                ) ||
+                                balanceBefore <
+                                0
+                            ) {
+                                throw createSaleError(
+                                    "Invalid stock balance calculation.",
+                                    500,
+                                );
+                            }
 
+                            /**
+                             * 8. Record inventory movement
+                             *
+                             * inventoryMovements:
+                             *
+                             * quantity = INTEGER
+                             * quantityChange = INTEGER
+                             * balanceBefore = INTEGER
+                             * balanceAfter = INTEGER
+                             * unitCost = NUMERIC
+                             */
                             const [
                                 movement,
                             ] =
@@ -1001,22 +1021,16 @@ export async function POST(
                                         insertedSale.id,
 
                                         quantity:
-                                            String(
-                                                item.quantity,
-                                            ),
+                                        item.quantity,
 
-                                        quantityChange:
                                         quantityChange,
 
-                                        balanceBefore:
                                         balanceBefore,
 
-                                        balanceAfter:
                                         balanceAfter,
 
                                         unitCost:
-                                        updatedProduct
-                                            .purchasePrice,
+                                        updatedProduct.purchasePrice,
 
                                         reason:
                                             `Sale ${insertedSale.saleNumber}`,
@@ -1041,128 +1055,118 @@ export async function POST(
                         }
                     }
 
-                    /*
-                     * 8. Create invoice
+                    /**
+                     * 9. Create invoice
                      */
-
                     const invoiceStatus =
-                        status === "confirmed"
+                        status ===
+                        "confirmed"
                             ? "issued"
                             : "draft";
 
-                    const now = new Date();
+                    const now =
+                        new Date();
 
                     const invoiceNumber =
                         generateInvoiceNumber(
                             insertedSale.id,
                         );
 
-                    let insertedInvoice:
-                        | CreateSaleResult["invoice"]
-                        | undefined;
+                    const [
+                        insertedInvoice,
+                    ] =
+                        await tx
+                            .insert(
+                                invoices,
+                            )
+                            .values({
+                                organizationId:
+                                insertedSale.organizationId,
 
-                    try {
-                        [
-                            insertedInvoice,
-                        ] =
-                            await tx
-                                .insert(invoices)
-                                .values({
-                                    organizationId:
-                                    insertedSale.organizationId,
+                                saleId:
+                                insertedSale.id,
 
-                                    saleId:
-                                    insertedSale.id,
+                                customerId:
+                                insertedSale.customerId,
 
-                                    customerId:
-                                    insertedSale.customerId,
+                                invoiceNumber,
 
-                                    invoiceNumber,
+                                status:
+                                invoiceStatus,
 
-                                    status:
-                                    invoiceStatus,
+                                issuedAt:
+                                    status ===
+                                    "confirmed"
+                                        ? now
+                                        : null,
 
-                                    issuedAt:
-                                        status ===
-                                        "confirmed"
-                                            ? now
-                                            : null,
+                                dueAt,
 
-                                    dueAt,
+                                subtotal:
+                                    centsToMoney(
+                                        totalCents,
+                                    ),
 
-                                    subtotal:
-                                        centsToMoney(
-                                            totalCents,
-                                        ),
+                                discount:
+                                    "0.00",
 
-                                    discount:
-                                        "0.00",
+                                total:
+                                    centsToMoney(
+                                        totalCents,
+                                    ),
 
-                                    total:
-                                        centsToMoney(
-                                            totalCents,
-                                        ),
+                                notes:
+                                    null,
 
-                                    notes: null,
+                                createdAt:
+                                now,
 
-                                    createdAt: now,
+                                updatedAt:
+                                now,
+                            })
+                            .returning({
+                                id:
+                                invoices.id,
 
-                                    updatedAt: now,
-                                })
-                                .returning({
-                                    id: invoices.id,
+                                organizationId:
+                                invoices.organizationId,
 
-                                    organizationId:
-                                    invoices.organizationId,
+                                saleId:
+                                invoices.saleId,
 
-                                    saleId:
-                                    invoices.saleId,
+                                customerId:
+                                invoices.customerId,
 
-                                    customerId:
-                                    invoices.customerId,
+                                invoiceNumber:
+                                invoices.invoiceNumber,
 
-                                    invoiceNumber:
-                                    invoices.invoiceNumber,
+                                status:
+                                invoices.status,
 
-                                    status:
-                                    invoices.status,
+                                issuedAt:
+                                invoices.issuedAt,
 
-                                    issuedAt:
-                                    invoices.issuedAt,
+                                dueAt:
+                                invoices.dueAt,
 
-                                    dueAt:
-                                    invoices.dueAt,
+                                subtotal:
+                                invoices.subtotal,
 
-                                    subtotal:
-                                    invoices.subtotal,
+                                discount:
+                                invoices.discount,
 
-                                    discount:
-                                    invoices.discount,
+                                total:
+                                invoices.total,
 
-                                    total:
-                                    invoices.total,
+                                notes:
+                                invoices.notes,
 
-                                    notes:
-                                    invoices.notes,
+                                createdAt:
+                                invoices.createdAt,
 
-                                    createdAt:
-                                    invoices.createdAt,
-
-                                    updatedAt:
-                                    invoices.updatedAt,
-                                });
-                    } catch (error) {
-                        if (
-                            isUniqueViolation(error)
-                        ) {
-                            throw createSaleError(
-                                `Invoice number "${invoiceNumber}" already exists.`,
-                                409,
-                            );
-                        }
-
-                        throw error;
-                    }
+                                updatedAt:
+                                invoices.updatedAt,
+                            });
 
                     if (!insertedInvoice) {
                         throw createSaleError(
@@ -1171,20 +1175,23 @@ export async function POST(
                         );
                     }
 
-                    /*
-                     * 9. Create invoice items
+                    /**
+                     * 10. Create invoice items
                      *
-                     * numeric quantity values must be
-                     * provided as strings to Drizzle.
+                     * This assumes invoiceItems.quantity
+                     * is a numeric column.
                      */
-
                     await tx
-                        .insert(invoiceItems)
+                        .insert(
+                            invoiceItems,
+                        )
                         .values(
                             preparedItems.map(
-                                (item) => ({
+                                (
+                                    item,
+                                ) => ({
                                     invoiceId:
-                                    insertedInvoice!.id,
+                                    insertedInvoice.id,
 
                                     productId:
                                     item.productId,
@@ -1213,25 +1220,18 @@ export async function POST(
                             ),
                         );
 
-                    /*
-                     * 10. Return result
-                     */
+                    return {
+                        sale:
+                        insertedSale,
 
-                    const response:
-                        CreateSaleResult =
-                        {
-                            sale: insertedSale,
+                        invoice:
+                        insertedInvoice,
 
-                            invoice:
-                            insertedInvoice,
-
-                            total:
-                                centsToMoney(
-                                    totalCents,
-                                ),
-                        };
-
-                    return response;
+                        total:
+                            centsToMoney(
+                                totalCents,
+                            ),
+                    } satisfies CreateSaleResult;
                 },
             );
 
@@ -1246,14 +1246,29 @@ export async function POST(
         );
 
         const status =
-            getErrorStatus(error);
+            getErrorStatus(
+                error,
+            );
 
-        if (status !== null) {
+        if (
+            status !== null
+        ) {
             return apiError(
                 error instanceof Error
                     ? error.message
                     : "Request failed.",
                 status,
+            );
+        }
+
+        if (
+            isUniqueViolation(
+                error,
+            )
+        ) {
+            return apiError(
+                "A unique constraint was violated.",
+                409,
             );
         }
 
@@ -1287,7 +1302,8 @@ export async function GET(
         }
 
         const params =
-            request.nextUrl.searchParams;
+            request.nextUrl
+                .searchParams;
 
         const search =
             params
@@ -1295,25 +1311,32 @@ export async function GET(
                 ?.trim() ?? "";
 
         const status =
-            params.get("status");
+            params.get(
+                "status",
+            );
 
         const page =
             parseInteger(
-                params.get("page"),
+                params.get(
+                    "page",
+                ),
                 DEFAULT_PAGE,
                 1,
             );
 
         const limit =
             parseInteger(
-                params.get("limit"),
+                params.get(
+                    "limit",
+                ),
                 DEFAULT_LIMIT,
                 1,
                 MAX_LIMIT,
             );
 
         const offset =
-            (page - 1) * limit;
+            (page - 1) *
+            limit;
 
         const filters = [
             eq(
@@ -1322,10 +1345,17 @@ export async function GET(
             ),
         ];
 
+        /**
+         * Only use statuses that are known
+         * to be valid according to the current
+         * business flow.
+         *
+         * Do not manually add "canceled"
+         * unless it exists in saleStatusEnum.
+         */
         if (
             status === "draft" ||
-            status === "confirmed" ||
-            status === "canceled"
+            status === "confirmed"
         ) {
             filters.push(
                 eq(
@@ -1336,7 +1366,7 @@ export async function GET(
         }
 
         if (search) {
-            filters.push(
+            const searchFilter =
                 or(
                     ilike(
                         sales.saleNumber,
@@ -1346,8 +1376,13 @@ export async function GET(
                         customers.name,
                         `%${search}%`,
                     ),
-                )!,
-            );
+                );
+
+            if (searchFilter) {
+                filters.push(
+                    searchFilter,
+                );
+            }
         }
 
         const whereClause =
@@ -1356,88 +1391,105 @@ export async function GET(
         const [
             items,
             countResult,
-        ] = await Promise.all([
-            db
-                .select({
-                    id:
-                    sales.id,
+        ] =
+            await Promise.all([
+                db
+                    .select({
+                        id:
+                        sales.id,
 
-                    saleNumber:
-                    sales.saleNumber,
+                        saleNumber:
+                        sales.saleNumber,
 
-                    customerId:
-                    sales.customerId,
+                        customerId:
+                        sales.customerId,
 
-                    customerName:
-                    customers.name,
+                        customerName:
+                        customers.name,
 
-                    status:
-                    sales.status,
+                        status:
+                        sales.status,
 
-                    totalAmount:
-                    sales.totalAmount,
+                        totalAmount:
+                        sales.totalAmount,
 
-                    createdAt:
-                    sales.createdAt,
-
-                    updatedAt:
-                    sales.updatedAt,
-                })
-                .from(sales)
-                .leftJoin(
-                    customers,
-                    and(
-                        eq(
-                            customers.id,
-                            sales.customerId,
-                        ),
-                        eq(
-                            customers.organizationId,
-                            organizationId,
-                        ),
-                    ),
-                )
-                .where(whereClause)
-                .orderBy(
-                    desc(
+                        createdAt:
                         sales.createdAt,
-                    ),
-                )
-                .limit(limit)
-                .offset(offset),
 
-            db
-                .select({
-                    total:
-                        count(),
-                })
-                .from(sales)
-                .leftJoin(
-                    customers,
-                    and(
-                        eq(
-                            customers.id,
-                            sales.customerId,
+                        updatedAt:
+                        sales.updatedAt,
+                    })
+                    .from(
+                        sales,
+                    )
+                    .leftJoin(
+                        customers,
+                        and(
+                            eq(
+                                customers.id,
+                                sales.customerId,
+                            ),
+
+                            eq(
+                                customers.organizationId,
+                                organizationId,
+                            ),
                         ),
-                        eq(
-                            customers.organizationId,
-                            organizationId,
+                    )
+                    .where(
+                        whereClause,
+                    )
+                    .orderBy(
+                        desc(
+                            sales.createdAt,
                         ),
+                    )
+                    .limit(
+                        limit,
+                    )
+                    .offset(
+                        offset,
                     ),
-                )
-                .where(whereClause),
-        ]);
+
+                db
+                    .select({
+                        total:
+                            count(),
+                    })
+                    .from(
+                        sales,
+                    )
+                    .leftJoin(
+                        customers,
+                        and(
+                            eq(
+                                customers.id,
+                                sales.customerId,
+                            ),
+
+                            eq(
+                                customers.organizationId,
+                                organizationId,
+                            ),
+                        ),
+                    )
+                    .where(
+                        whereClause,
+                    ),
+            ]);
 
         const total =
             Number(
-                countResult[0]?.total ?? 0,
+                countResult[0]
+                    ?.total ?? 0,
             );
 
         const totalPages =
             total === 0
                 ? 0
                 : Math.ceil(
-                    total / limit,
+                    total /
+                    limit,
                 );
 
         return apiSuccess({
@@ -1453,7 +1505,8 @@ export async function GET(
                 totalPages,
 
                 hasNextPage:
-                    page < totalPages,
+                    page <
+                    totalPages,
 
                 hasPreviousPage:
                     page > 1,
@@ -1466,9 +1519,13 @@ export async function GET(
         );
 
         const status =
-            getErrorStatus(error);
+            getErrorStatus(
+                error,
+            );
 
-        if (status !== null) {
+        if (
+            status !== null
+        ) {
             return apiError(
                 error instanceof Error
                     ? error.message

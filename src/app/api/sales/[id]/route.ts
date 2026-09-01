@@ -1,4 +1,4 @@
-import {NextRequest} from "next/server";
+import { NextRequest } from "next/server";
 import {
     and,
     eq,
@@ -6,14 +6,16 @@ import {
     isNull,
 } from "drizzle-orm";
 
-import {db} from "@/src/db";
+import { db } from "@/src/db";
 
-import {sales} from "@/src/db/schema";
-import {saleItems} from "@/src/db/schema";
-import {products} from "@/src/db/schema";
-import {customers} from "@/src/db/schema";
+import {
+    customers,
+    products,
+    saleItems,
+    sales,
+} from "@/src/db/schema";
 
-import {requirePermission} from "@/src/lib/require-permission";
+import { requirePermission } from "@/src/lib/require-permission";
 
 import {
     apiError,
@@ -26,9 +28,7 @@ type Context = {
     }>;
 };
 
-function getErrorStatus(
-    error: unknown,
-): number | null {
+function getErrorStatus(error: unknown): number | null {
     if (
         error instanceof Error &&
         "status" in error &&
@@ -40,17 +40,13 @@ function getErrorStatus(
     return null;
 }
 
-function isValidUuid(
-    value: string,
-): boolean {
+function isValidUuid(value: string): boolean {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         value,
     );
 }
 
-function parseMoneyToCents(
-    value: unknown,
-): number | null {
+function parseMoneyToCents(value: unknown): number | null {
     if (
         typeof value !== "string" &&
         typeof value !== "number"
@@ -58,19 +54,13 @@ function parseMoneyToCents(
         return null;
     }
 
-    const normalized =
-        String(value).trim();
+    const normalized = String(value).trim();
 
-    if (
-        !/^\d+(?:\.\d{1,2})?$/.test(
-            normalized,
-        )
-    ) {
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
         return null;
     }
 
-    const [whole, decimal = ""] =
-        normalized.split(".");
+    const [whole, decimal = ""] = normalized.split(".");
 
     const cents = Number(
         `${whole}${decimal.padEnd(2, "0")}`,
@@ -81,12 +71,8 @@ function parseMoneyToCents(
         : null;
 }
 
-function centsToMoney(
-    cents: number,
-): string {
-    return (
-        cents / 100
-    ).toFixed(2);
+function centsToMoney(cents: number): string {
+    return (cents / 100).toFixed(2);
 }
 
 /**
@@ -97,15 +83,13 @@ export async function GET(
     context: Context,
 ) {
     try {
-        const {
-            organizationId,
-        } = await requirePermission(
-            "sales",
-            "read",
-        );
+        const { organizationId } =
+            await requirePermission(
+                "sales",
+                "read",
+            );
 
-        const {id} =
-            await context.params;
+        const { id } = await context.params;
 
         if (!isValidUuid(id)) {
             return apiError(
@@ -114,50 +98,40 @@ export async function GET(
             );
         }
 
-        const [sale] =
-            await db
-                .select({
-                    id: sales.id,
-                    organizationId:
-                    sales.organizationId,
-                    customerId:
+        const [sale] = await db
+            .select({
+                id: sales.id,
+                organizationId: sales.organizationId,
+                customerId: sales.customerId,
+                customerName: customers.name,
+                saleNumber: sales.saleNumber,
+                status: sales.status,
+                totalAmount: sales.totalAmount,
+                createdBy: sales.createdBy,
+                createdAt: sales.createdAt,
+                updatedAt: sales.updatedAt,
+            })
+            .from(sales)
+            .leftJoin(
+                customers,
+                eq(
+                    customers.id,
                     sales.customerId,
-                    customerName:
-                    customers.name,
-                    saleNumber:
-                    sales.saleNumber,
-                    status:
-                    sales.status,
-                    totalAmount:
-                    sales.totalAmount,
-                    createdBy:
-                    sales.createdBy,
-                    createdAt:
-                    sales.createdAt,
-                    updatedAt:
-                    sales.updatedAt,
-                })
-                .from(sales)
-                .leftJoin(
-                    customers,
+                ),
+            )
+            .where(
+                and(
                     eq(
-                        customers.id,
-                        sales.customerId,
+                        sales.id,
+                        id,
                     ),
-                )
-                .where(
-                    and(
-                        eq(
-                            sales.id,
-                            id,
-                        ),
-                        eq(
-                            sales.organizationId,
-                            organizationId,
-                        ),
+                    eq(
+                        sales.organizationId,
+                        organizationId,
                     ),
-                )
-                .limit(1);
+                ),
+            )
+            .limit(1);
 
         if (!sale) {
             return apiError(
@@ -166,45 +140,30 @@ export async function GET(
             );
         }
 
-        /*
-         * Do not filter deleted products here.
-         *
-         * A product may have been archived after
-         * the sale was created. Historical sale data
-         * must remain readable.
-         */
-        const items =
-            await db
-                .select({
-                    id:
-                    saleItems.id,
-                    productId:
+        const items = await db
+            .select({
+                id: saleItems.id,
+                productId: saleItems.productId,
+                productName: products.name,
+                sku: products.sku,
+                quantity: saleItems.quantity,
+                unitPrice: saleItems.unitPrice,
+                subtotal: saleItems.subtotal,
+            })
+            .from(saleItems)
+            .leftJoin(
+                products,
+                eq(
+                    products.id,
                     saleItems.productId,
-                    productName:
-                    products.name,
-                    sku:
-                    products.sku,
-                    quantity:
-                    saleItems.quantity,
-                    unitPrice:
-                    saleItems.unitPrice,
-                    subtotal:
-                    saleItems.subtotal,
-                })
-                .from(saleItems)
-                .leftJoin(
-                    products,
-                    eq(
-                        products.id,
-                        saleItems.productId,
-                    ),
-                )
-                .where(
-                    eq(
-                        saleItems.saleId,
-                        sale.id,
-                    ),
-                );
+                ),
+            )
+            .where(
+                eq(
+                    saleItems.saleId,
+                    sale.id,
+                ),
+            );
 
         return apiSuccess({
             ...sale,
@@ -240,22 +199,21 @@ export async function GET(
  *
  * Draft sales only.
  *
- * Does not confirm/cancel a sale.
+ * Status changes are handled by
+ * dedicated confirm/cancel endpoints.
  */
 export async function PATCH(
     request: NextRequest,
     context: Context,
 ) {
     try {
-        const {
-            organizationId,
-        } = await requirePermission(
-            "sales",
-            "update",
-        );
+        const { organizationId } =
+            await requirePermission(
+                "sales",
+                "update",
+            );
 
-        const {id} =
-            await context.params;
+        const { id } = await context.params;
 
         if (!isValidUuid(id)) {
             return apiError(
@@ -296,6 +254,8 @@ export async function PATCH(
                                 sales.saleNumber,
                                 status:
                                 sales.status,
+                                totalAmount:
+                                sales.totalAmount,
                             })
                             .from(sales)
                             .where(
@@ -337,9 +297,7 @@ export async function PATCH(
                         );
                     }
 
-                    if (
-                        "status" in input
-                    ) {
+                    if ("status" in input) {
                         throw Object.assign(
                             new Error(
                                 "Use the confirm or cancel endpoint to change sale status.",
@@ -350,13 +308,15 @@ export async function PATCH(
                         );
                     }
 
-                    const updateSale: {
-                        saleNumber?: string;
-                        customerId?: string;
-                        totalAmount?: string;
-                        updatedAt?: Date;
-                    } = {};
+                    const updateSale: Partial<
+                        typeof sales.$inferInsert
+                    > = {};
 
+                    let hasChanges = false;
+
+                    /**
+                     * saleNumber
+                     */
                     if (
                         "saleNumber" in
                         input
@@ -395,8 +355,13 @@ export async function PATCH(
 
                         updateSale.saleNumber =
                             saleNumber;
+
+                        hasChanges = true;
                     }
 
+                    /**
+                     * customerId
+                     */
                     if (
                         "customerId" in
                         input
@@ -469,8 +434,13 @@ export async function PATCH(
 
                         updateSale.customerId =
                             customerId;
+
+                        hasChanges = true;
                     }
 
+                    /**
+                     * items
+                     */
                     if ("items" in input) {
                         if (
                             !Array.isArray(
@@ -643,7 +613,9 @@ export async function PATCH(
                         const productMap =
                             new Map(
                                 fetchedProducts.map(
-                                    (product) => [
+                                    (
+                                        product,
+                                    ) => [
                                         product.id,
                                         product,
                                     ],
@@ -653,7 +625,9 @@ export async function PATCH(
                         let totalCents = 0;
 
                         await tx
-                            .delete(saleItems)
+                            .delete(
+                                saleItems,
+                            )
                             .where(
                                 eq(
                                     saleItems.saleId,
@@ -687,7 +661,8 @@ export async function PATCH(
                                 );
 
                             if (
-                                price === null
+                                price ===
+                                null
                             ) {
                                 throw Object.assign(
                                     new Error(
@@ -713,23 +688,34 @@ export async function PATCH(
                                 .values({
                                     saleId:
                                     existing.id,
+
                                     productId:
                                     item.productId,
 
                                     /*
-                                     * Drizzle infers numeric PostgreSQL
-                                     * columns as strings.
+                                     * quantity is INTEGER
+                                     * in PostgreSQL.
+                                     *
+                                     * Therefore it must be
+                                     * passed as number,
+                                     * NOT string.
                                      */
                                     quantity:
-                                        String(
-                                            item.quantity,
-                                        ),
+                                    item.quantity,
 
+                                    /*
+                                     * unitPrice is NUMERIC,
+                                     * so Drizzle expects
+                                     * the string representation.
+                                     */
                                     unitPrice:
                                         centsToMoney(
                                             price,
                                         ),
 
+                                    /*
+                                     * subtotal is NUMERIC.
+                                     */
                                     subtotal:
                                         centsToMoney(
                                             subtotal,
@@ -741,18 +727,11 @@ export async function PATCH(
                             centsToMoney(
                                 totalCents,
                             );
+
+                        hasChanges = true;
                     }
 
-                    updateSale.updatedAt =
-                        new Date();
-
-                    if (
-                        Object.keys(
-                            updateSale,
-                        ).length === 1 &&
-                        "updatedAt" in
-                        updateSale
-                    ) {
+                    if (!hasChanges) {
                         throw Object.assign(
                             new Error(
                                 "No fields to update.",
@@ -762,6 +741,9 @@ export async function PATCH(
                             },
                         );
                     }
+
+                    updateSale.updatedAt =
+                        new Date();
 
                     const [updated] =
                         await tx
@@ -779,7 +761,7 @@ export async function PATCH(
                                     ),
                                     eq(
                                         sales.status,
-                                        "draft",
+                                        existing.status,
                                     ),
                                 ),
                             )
