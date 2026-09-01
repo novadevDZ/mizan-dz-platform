@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="32" fill="#2563eb"/>
+  <circle cx="64" cy="49" r="24" fill="#ffffff" opacity=".96"/>
+  <path d="M24 112c5-22 21-34 40-34s35 12 40 34" fill="#ffffff" opacity=".96"/>
+  <text x="64" y="118" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#2563eb">MIZAN DZ</text>
+</svg>
