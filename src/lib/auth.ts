@@ -3,12 +3,6 @@ import {drizzleAdapter} from "@better-auth/drizzle-adapter";
 import {organization} from "better-auth/plugins";
 
 import {db} from "@/src/db";
-
-import { sendEmail } from "@/src/lib/email";
-import {
-    verifyEmailTemplate,
-} from "@/src/lib/email/templates/verify-email";
-
 import {
     user,
     session,
@@ -72,30 +66,6 @@ export const auth = betterAuth({
      *
      * Replace this with a real email provider later.
      */
-    emailVerification: {
-        sendOnSignUp: false,
-
-        sendVerificationEmail: async ({
-                                          user,
-                                          url,
-                                      }) => {
-            const {
-                html,
-                text,
-            } = verifyEmailTemplate({
-                userName: user.name,
-                verificationUrl: url,
-            });
-
-            void sendEmail({
-                to: user.email,
-                subject:
-                    "Verify your Mizan DZ email",
-                html,
-                text,
-            });
-        },
-    },
     /*
      * =========================================================
      * ORGANIZATION

@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import {NextRequest} from "next/server";
 
 import {
     and,
@@ -13,7 +13,7 @@ import {
     sql,
 } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import {db} from "@/src/db";
 
 import {
     customers,
@@ -25,7 +25,7 @@ import {
     inventoryMovements,
 } from "@/src/db/schema";
 
-import { requirePermission } from "@/src/lib/require-permission";
+import {requirePermission} from "@/src/lib/require-permission";
 
 import {
     apiError,
@@ -40,10 +40,7 @@ type SaleStatus =
     typeof sales.$inferSelect.status;
 
 type SaleCreationStatus =
-    Extract<
-        SaleStatus,
-        "draft" | "confirmed"
-    >;
+    Extract<SaleStatus, "draft" | "confirmed">;
 
 type SaleItemInput = {
     productId: unknown;
@@ -63,38 +60,20 @@ type PreparedSaleItem = {
     subtotalCents: number;
 };
 
-type CreateSaleResult = {
-    sale: {
-        id: string;
-        organizationId: string;
-        customerId: string;
-        saleNumber: string;
-        status: SaleStatus;
-        totalAmount: string;
-        createdBy: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-    };
+type SaleInsert =
+    typeof sales.$inferInsert;
 
-    invoice: {
-        id: string;
-        organizationId: string;
-        saleId: string;
-        customerId: string;
-        invoiceNumber: string;
-        status: string;
-        issuedAt: Date | null;
-        dueAt: Date | null;
-        subtotal: string;
-        discount: string;
-        total: string;
-        notes: string | null;
-        createdAt: Date;
-        updatedAt: Date;
-    };
+type SaleItemInsert =
+    typeof saleItems.$inferInsert;
 
-    total: string;
-};
+type InvoiceInsert =
+    typeof invoices.$inferInsert;
+
+type InvoiceItemInsert =
+    typeof invoiceItems.$inferInsert;
+
+type InventoryMovementInsert =
+    typeof inventoryMovements.$inferInsert;
 
 function createSaleError(
     message: string,
@@ -132,7 +111,8 @@ function parseInteger(
         return fallback;
     }
 
-    const parsed = Number(value);
+    const parsed =
+        Number(value);
 
     if (!Number.isInteger(parsed)) {
         return fallback;
@@ -147,6 +127,42 @@ function parseInteger(
         parsed > max
     ) {
         return max;
+    }
+
+    return parsed;
+}
+
+/**
+ * Parse a positive integer while preserving
+ * the actual database type expected by Drizzle.
+ */
+function parsePositiveInteger(
+    value: unknown,
+): number | null {
+    if (
+        typeof value !== "string" &&
+        typeof value !== "number"
+    ) {
+        return null;
+    }
+
+    const normalized =
+        typeof value === "string"
+            ? value.trim()
+            : String(value);
+
+    if (!/^\d+$/.test(normalized)) {
+        return null;
+    }
+
+    const parsed =
+        Number(normalized);
+
+    if (
+        !Number.isSafeInteger(parsed) ||
+        parsed <= 0
+    ) {
+        return null;
     }
 
     return parsed;
@@ -184,13 +200,17 @@ function parseMoneyToCents(
     const [
         whole,
         decimal = "",
-    ] = normalized.split(".");
+    ] =
+        normalized.split(".");
 
-    const cents = Number(
-        `${whole}${decimal.padEnd(2, "0")}`,
-    );
+    const cents =
+        Number(
+            `${whole}${decimal.padEnd(2, "0")}`,
+        );
 
-    if (!Number.isSafeInteger(cents)) {
+    if (
+        !Number.isSafeInteger(cents)
+    ) {
         return null;
     }
 
@@ -200,7 +220,9 @@ function parseMoneyToCents(
 function centsToMoney(
     cents: number,
 ): string {
-    return (cents / 100).toFixed(2);
+    return (
+        cents / 100
+    ).toFixed(2);
 }
 
 function parseDueAt(
@@ -214,7 +236,9 @@ function parseDueAt(
         return null;
     }
 
-    if (typeof value !== "string") {
+    if (
+        typeof value !== "string"
+    ) {
         throw createSaleError(
             "dueAt must be a valid ISO date string.",
             400,
@@ -279,31 +303,13 @@ function isUniqueViolation(
         };
 
     return (
-        candidate.code ===
-        "23505" ||
-        candidate.cause?.code ===
-        "23505"
+        candidate.code === "23505" ||
+        candidate.cause?.code === "23505"
     );
 }
 
 /**
  * POST /api/sales
- *
- * Creates atomically:
- * - Sale
- * - Sale items
- * - Invoice
- * - Invoice items
- *
- * Draft:
- * - stock unchanged
- * - no inventory movement
- * - invoice remains draft
- *
- * Confirmed:
- * - stock decreases
- * - inventory movement created
- * - invoice becomes issued
  */
 export async function POST(
     request: NextRequest,
@@ -357,33 +363,28 @@ export async function POST(
                 : "";
 
         const status:
-            | SaleCreationStatus
-            | null =
-            input.status ===
-            "confirmed"
-                ? "confirmed"
-                : input.status ===
-                "draft"
-                    ? "draft"
-                    : null;
+            SaleCreationStatus | null =
+            input.status === "draft" ||
+            input.status === "confirmed"
+                ? input.status
+                : null;
 
         const rawItems =
-            Array.isArray(
-                input.items,
-            )
+            Array.isArray(input.items)
                 ? input.items
                 : null;
 
         let dueAt:
-            | Date
-            | null = null;
+            Date | null = null;
 
         try {
             dueAt =
                 parseDueAt(
                     input.dueAt,
                 );
-        } catch (error) {
+        } catch (
+            error
+            ) {
             const statusCode =
                 getErrorStatus(
                     error,
@@ -473,7 +474,7 @@ export async function POST(
 
         for (
             const rawItem of
-            rawItems as SaleItemInput[]
+            rawItems
             ) {
             if (
                 typeof rawItem !==
@@ -489,21 +490,19 @@ export async function POST(
                 );
             }
 
+            const item =
+                rawItem as SaleItemInput;
+
             const productId =
-                typeof rawItem.productId ===
+                typeof item.productId ===
                 "string"
-                    ? rawItem.productId.trim()
+                    ? item.productId.trim()
                     : "";
 
             const quantity =
-                typeof rawItem.quantity ===
-                "string" ||
-                typeof rawItem.quantity ===
-                "number"
-                    ? Number(
-                        rawItem.quantity,
-                    )
-                    : NaN;
+                parsePositiveInteger(
+                    item.quantity,
+                );
 
             if (
                 !productId ||
@@ -518,10 +517,7 @@ export async function POST(
             }
 
             if (
-                !Number.isInteger(
-                    quantity,
-                ) ||
-                quantity <= 0
+                quantity === null
             ) {
                 return apiError(
                     "Sale quantity must be a positive integer.",
@@ -553,7 +549,7 @@ export async function POST(
         const result =
             await db.transaction(
                 async (tx) => {
-                    /**
+                    /*
                      * 1. Validate customer
                      */
                     const [customer] =
@@ -589,7 +585,7 @@ export async function POST(
                         );
                     }
 
-                    /**
+                    /*
                      * 2. Check duplicate sale number
                      */
                     const [
@@ -617,15 +613,17 @@ export async function POST(
                             )
                             .limit(1);
 
-                    if (existingSale) {
+                    if (
+                        existingSale
+                    ) {
                         throw createSaleError(
                             `Sale number "${saleNumber}" already exists.`,
                             409,
                         );
                     }
 
-                    /**
-                     * 3. Load products
+                    /*
+                     * 3. Fetch products
                      */
                     const fetchedProducts =
                         await tx
@@ -688,192 +686,216 @@ export async function POST(
                             ),
                         );
 
-                    /**
-                     * 4. Prepare items and calculate total
+                    /*
+                     * 4. Calculate totals
                      */
                     let totalCents =
                         0;
 
                     const preparedItems:
                         PreparedSaleItem[] =
-                        parsedItems.map(
-                            (
-                                item,
-                            ) => {
-                                const product =
-                                    productMap.get(
-                                        item.productId,
-                                    );
+                        [];
 
-                                if (!product) {
-                                    throw createSaleError(
-                                        "Product not found.",
-                                        404,
-                                    );
-                                }
+                    for (
+                        const item of
+                        parsedItems
+                        ) {
+                        const product =
+                            productMap.get(
+                                item.productId,
+                            );
 
-                                const unitPriceCents =
-                                    parseMoneyToCents(
-                                        product.sellingPrice,
-                                    );
+                        if (!product) {
+                            throw createSaleError(
+                                "Product not found.",
+                                404,
+                            );
+                        }
 
-                                if (
-                                    unitPriceCents ===
-                                    null ||
-                                    unitPriceCents <
-                                    0
-                                ) {
-                                    throw createSaleError(
-                                        `Invalid selling price for product "${product.name}".`,
-                                        500,
-                                    );
-                                }
+                        const unitPriceCents =
+                            parseMoneyToCents(
+                                product.sellingPrice,
+                            );
 
-                                const subtotalCents =
-                                    unitPriceCents *
-                                    item.quantity;
+                        if (
+                            unitPriceCents ===
+                            null ||
+                            unitPriceCents <
+                            0
+                        ) {
+                            throw createSaleError(
+                                `Invalid selling price for product "${product.name}".`,
+                                500,
+                            );
+                        }
 
-                                if (
-                                    !Number.isSafeInteger(
-                                        subtotalCents,
-                                    )
-                                ) {
-                                    throw createSaleError(
-                                        "Sale amount is too large.",
-                                        400,
-                                    );
-                                }
-
-                                totalCents +=
-                                    subtotalCents;
-
-                                if (
-                                    !Number.isSafeInteger(
-                                        totalCents,
-                                    )
-                                ) {
-                                    throw createSaleError(
-                                        "Sale total is too large.",
-                                        400,
-                                    );
-                                }
-
-                                return {
-                                    productId:
-                                    item.productId,
-
-                                    productName:
-                                    product.name,
-
-                                    quantity:
-                                    item.quantity,
-
+                        if (
+                            item.quantity >
+                            Math.floor(
+                                Number.MAX_SAFE_INTEGER /
+                                Math.max(
                                     unitPriceCents,
-
-                                    subtotalCents,
-                                };
-                            },
-                        );
-
-                    /**
-                     * 5. Insert sale
-                     */
-                    const [
-                        insertedSale,
-                    ] =
-                        await tx
-                            .insert(
-                                sales,
+                                    1,
+                                ),
                             )
-                            .values({
-                                organizationId,
+                        ) {
+                            throw createSaleError(
+                                "Sale amount is too large.",
+                                400,
+                            );
+                        }
 
-                                customerId,
+                        const subtotalCents =
+                            unitPriceCents *
+                            item.quantity;
 
-                                saleNumber,
+                        if (
+                            !Number.isSafeInteger(
+                                subtotalCents,
+                            )
+                        ) {
+                            throw createSaleError(
+                                "Sale amount is too large.",
+                                400,
+                            );
+                        }
 
-                                status,
+                        totalCents +=
+                            subtotalCents;
 
-                                totalAmount:
-                                    centsToMoney(
-                                        totalCents,
-                                    ),
-                            })
-                            .returning({
-                                id:
-                                sales.id,
+                        if (
+                            !Number.isSafeInteger(
+                                totalCents,
+                            )
+                        ) {
+                            throw createSaleError(
+                                "Sale total is too large.",
+                                400,
+                            );
+                        }
 
-                                organizationId:
-                                sales.organizationId,
+                        preparedItems.push({
+                            productId:
+                            item.productId,
 
-                                customerId:
-                                sales.customerId,
+                            productName:
+                            product.name,
 
-                                saleNumber:
-                                sales.saleNumber,
+                            quantity:
+                            item.quantity,
 
-                                status:
-                                sales.status,
+                            unitPriceCents,
 
-                                totalAmount:
-                                sales.totalAmount,
-
-                                createdBy:
-                                sales.createdBy,
-
-                                createdAt:
-                                sales.createdAt,
-
-                                updatedAt:
-                                sales.updatedAt,
-                            });
-
-                    if (!insertedSale) {
-                        throw createSaleError(
-                            "Failed to create sale.",
-                            500,
-                        );
+                            subtotalCents,
+                        });
                     }
 
-                    /**
+                    /*
+                     * 5. Insert sale
+                     */
+                    const saleValues:
+                        SaleInsert =
+                        {
+                            organizationId,
+
+                            customerId,
+
+                            saleNumber,
+
+                            status,
+
+                            totalAmount:
+                                centsToMoney(
+                                    totalCents,
+                                ),
+                        };
+
+                    let insertedSale:
+                        typeof sales.$inferSelect;
+
+                    try {
+                        const [
+                            sale,
+                        ] =
+                            await tx
+                                .insert(
+                                    sales,
+                                )
+                                .values(
+                                    saleValues,
+                                )
+                                .returning();
+
+                        if (!sale) {
+                            throw createSaleError(
+                                "Failed to create sale.",
+                                500,
+                            );
+                        }
+
+                        insertedSale =
+                            sale;
+                    } catch (
+                        error
+                        ) {
+                        if (
+                            isUniqueViolation(
+                                error,
+                            )
+                        ) {
+                            throw createSaleError(
+                                `Sale number "${saleNumber}" already exists.`,
+                                409,
+                            );
+                        }
+
+                        throw error;
+                    }
+
+                    /*
                      * 6. Insert sale items
                      *
-                     * IMPORTANT:
-                     * saleItems.quantity is INTEGER.
+                     * saleItems.quantity must be NUMBER.
                      */
+                    const saleItemValues:
+                        SaleItemInsert[] =
+                        preparedItems.map(
+                            (
+                                item,
+                            ) => ({
+                                saleId:
+                                insertedSale.id,
+
+                                productId:
+                                item.productId,
+
+                                quantity:
+                                item.quantity,
+
+                                unitPrice:
+                                    centsToMoney(
+                                        item.unitPriceCents,
+                                    ),
+
+                                subtotal:
+                                    centsToMoney(
+                                        item.subtotalCents,
+                                    ),
+                            }),
+                        );
+
                     await tx
                         .insert(
                             saleItems,
                         )
                         .values(
-                            preparedItems.map(
-                                (
-                                    item,
-                                ) => ({
-                                    saleId:
-                                    insertedSale.id,
-
-                                    productId:
-                                    item.productId,
-
-                                    quantity:
-                                    item.quantity,
-
-                                    unitPrice:
-                                        centsToMoney(
-                                            item.unitPriceCents,
-                                        ),
-
-                                    subtotal:
-                                        centsToMoney(
-                                            item.subtotalCents,
-                                        ),
-                                }),
-                            ),
+                            saleItemValues,
                         );
 
-                    /**
-                     * 7. Handle stock for confirmed sales
+                    /*
+                     * 7. Confirmed sale:
+                     * update stock and create
+                     * inventory movements.
                      */
                     if (
                         status ===
@@ -883,9 +905,6 @@ export async function POST(
                             const item of
                             preparedItems
                             ) {
-                            /**
-                             * Atomic stock decrement.
-                             */
                             const [
                                 updatedProduct,
                             ] =
@@ -895,9 +914,9 @@ export async function POST(
                                     )
                                     .set({
                                         stockQuantity:
-                                            sql`
-                                                ${products.stockQuantity} - ${item.quantity}
-                                            `,
+                                            sql`${products.stockQuantity}
+                                            -
+                                            ${item.quantity}`,
 
                                         updatedAt:
                                             new Date(),
@@ -960,12 +979,8 @@ export async function POST(
                                 );
                             }
 
-                            /**
-                             * Since the movement represents
-                             * a sale:
-                             *
-                             * quantity = sold quantity
-                             * quantityChange = negative
+                            /*
+                             * quantityChange must be NUMBER.
                              */
                             const quantityChange =
                                 -item.quantity;
@@ -987,17 +1002,49 @@ export async function POST(
                                 );
                             }
 
-                            /**
-                             * 8. Record inventory movement
-                             *
-                             * inventoryMovements:
-                             *
-                             * quantity = INTEGER
-                             * quantityChange = INTEGER
-                             * balanceBefore = INTEGER
-                             * balanceAfter = INTEGER
-                             * unitCost = NUMERIC
+                            /*
+                             * inventoryMovements.quantity
+                             * must be NUMBER.
                              */
+                            const movementValues:
+                                InventoryMovementInsert =
+                                {
+                                    organizationId,
+
+                                    productId:
+                                    item.productId,
+
+                                    type:
+                                        "sale",
+
+                                    referenceType:
+                                        "sale",
+
+                                    referenceId:
+                                    insertedSale.id,
+
+                                    quantity:
+                                    item.quantity,
+
+                                    quantityChange,
+
+                                    balanceBefore,
+
+                                    balanceAfter,
+
+                                    unitCost:
+                                    updatedProduct.purchasePrice,
+
+                                    reason:
+                                        `Sale ${insertedSale.saleNumber}`,
+
+                                    referenceNumber:
+                                    insertedSale.saleNumber,
+
+                                    createdBy:
+                                    insertedSale.createdBy,
+                                };
+
                             const [
                                 movement,
                             ] =
@@ -1005,48 +1052,14 @@ export async function POST(
                                     .insert(
                                         inventoryMovements,
                                     )
-                                    .values({
-                                        organizationId,
+                                    .values(
+                                        movementValues,
+                                    )
+                                    .returning();
 
-                                        productId:
-                                        item.productId,
-
-                                        type:
-                                            "sale",
-
-                                        referenceType:
-                                            "sale",
-
-                                        referenceId:
-                                        insertedSale.id,
-
-                                        quantity:
-                                        item.quantity,
-
-                                        quantityChange,
-
-                                        balanceBefore,
-
-                                        balanceAfter,
-
-                                        unitCost:
-                                        updatedProduct.purchasePrice,
-
-                                        reason:
-                                            `Sale ${insertedSale.saleNumber}`,
-
-                                        referenceNumber:
-                                        insertedSale.saleNumber,
-
-                                        createdBy:
-                                        insertedSale.createdBy,
-                                    })
-                                    .returning({
-                                        id:
-                                        inventoryMovements.id,
-                                    });
-
-                            if (!movement) {
+                            if (
+                                !movement
+                            ) {
                                 throw createSaleError(
                                     "Failed to create inventory movement.",
                                     500,
@@ -1055,8 +1068,8 @@ export async function POST(
                         }
                     }
 
-                    /**
-                     * 9. Create invoice
+                    /*
+                     * 8. Create invoice
                      */
                     const invoiceStatus =
                         status ===
@@ -1072,154 +1085,155 @@ export async function POST(
                             insertedSale.id,
                         );
 
-                    const [
-                        insertedInvoice,
-                    ] =
-                        await tx
-                            .insert(
-                                invoices,
+                    const invoiceValues:
+                        InvoiceInsert =
+                        {
+                            organizationId:
+                            insertedSale.organizationId,
+
+                            saleId:
+                            insertedSale.id,
+
+                            customerId:
+                            insertedSale.customerId,
+
+                            invoiceNumber,
+
+                            status:
+                            invoiceStatus,
+
+                            issuedAt:
+                                status ===
+                                "confirmed"
+                                    ? now
+                                    : null,
+
+                            dueAt,
+
+                            subtotal:
+                                centsToMoney(
+                                    totalCents,
+                                ),
+
+                            discount:
+                                "0.00",
+
+                            total:
+                                centsToMoney(
+                                    totalCents,
+                                ),
+
+                            notes:
+                                null,
+
+                            createdAt:
+                            now,
+
+                            updatedAt:
+                            now,
+                        };
+
+                    let insertedInvoice:
+                        typeof invoices.$inferSelect;
+
+                    try {
+                        const [
+                            invoice,
+                        ] =
+                            await tx
+                                .insert(
+                                    invoices,
+                                )
+                                .values(
+                                    invoiceValues,
+                                )
+                                .returning();
+
+                        if (!invoice) {
+                            throw createSaleError(
+                                "Failed to create invoice.",
+                                500,
+                            );
+                        }
+
+                        insertedInvoice =
+                            invoice;
+                    } catch (
+                        error
+                        ) {
+                        if (
+                            isUniqueViolation(
+                                error,
                             )
-                            .values({
-                                organizationId:
-                                insertedSale.organizationId,
+                        ) {
+                            throw createSaleError(
+                                `Invoice number "${invoiceNumber}" already exists.`,
+                                409,
+                            );
+                        }
 
-                                saleId:
-                                insertedSale.id,
-
-                                customerId:
-                                insertedSale.customerId,
-
-                                invoiceNumber,
-
-                                status:
-                                invoiceStatus,
-
-                                issuedAt:
-                                    status ===
-                                    "confirmed"
-                                        ? now
-                                        : null,
-
-                                dueAt,
-
-                                subtotal:
-                                    centsToMoney(
-                                        totalCents,
-                                    ),
-
-                                discount:
-                                    "0.00",
-
-                                total:
-                                    centsToMoney(
-                                        totalCents,
-                                    ),
-
-                                notes:
-                                    null,
-
-                                createdAt:
-                                now,
-
-                                updatedAt:
-                                now,
-                            })
-                            .returning({
-                                id:
-                                invoices.id,
-
-                                organizationId:
-                                invoices.organizationId,
-
-                                saleId:
-                                invoices.saleId,
-
-                                customerId:
-                                invoices.customerId,
-
-                                invoiceNumber:
-                                invoices.invoiceNumber,
-
-                                status:
-                                invoices.status,
-
-                                issuedAt:
-                                invoices.issuedAt,
-
-                                dueAt:
-                                invoices.dueAt,
-
-                                subtotal:
-                                invoices.subtotal,
-
-                                discount:
-                                invoices.discount,
-
-                                total:
-                                invoices.total,
-
-                                notes:
-                                invoices.notes,
-
-                                createdAt:
-                                invoices.createdAt,
-
-                                updatedAt:
-                                invoices.updatedAt,
-                            });
-
-                    if (!insertedInvoice) {
-                        throw createSaleError(
-                            "Failed to create invoice.",
-                            500,
-                        );
+                        throw error;
                     }
 
-                    /**
-                     * 10. Create invoice items
+                    /*
+                     * 9. Create invoice items
                      *
-                     * This assumes invoiceItems.quantity
-                     * is a numeric column.
+                     * IMPORTANT:
+                     * invoiceItems.quantity in your
+                     * current schema is a STRING.
+                     *
+                     * Do NOT change this to:
+                     * quantity: item.quantity
+                     *
+                     * because that creates the opposite
+                     * TypeScript error.
                      */
+                    const invoiceItemValues:
+                        InvoiceItemInsert[] =
+                        preparedItems.map(
+                            (
+                                item,
+                            ) => ({
+                                invoiceId:
+                                insertedInvoice.id,
+
+                                productId:
+                                item.productId,
+
+                                productName:
+                                item.productName,
+
+                                description:
+                                    null,
+
+                                quantity:
+                                    String(
+                                        item.quantity,
+                                    ),
+
+                                unitPrice:
+                                    centsToMoney(
+                                        item.unitPriceCents,
+                                    ),
+
+                                subtotal:
+                                    centsToMoney(
+                                        item.subtotalCents,
+                                    ),
+                            }),
+                        );
+
                     await tx
                         .insert(
                             invoiceItems,
                         )
                         .values(
-                            preparedItems.map(
-                                (
-                                    item,
-                                ) => ({
-                                    invoiceId:
-                                    insertedInvoice.id,
-
-                                    productId:
-                                    item.productId,
-
-                                    productName:
-                                    item.productName,
-
-                                    description:
-                                        null,
-
-                                    quantity:
-                                        String(
-                                            item.quantity,
-                                        ),
-
-                                    unitPrice:
-                                        centsToMoney(
-                                            item.unitPriceCents,
-                                        ),
-
-                                    subtotal:
-                                        centsToMoney(
-                                            item.subtotalCents,
-                                        ),
-                                }),
-                            ),
+                            invoiceItemValues,
                         );
 
+                    /*
+                     * 10. Return result
+                     */
                     return {
                         sale:
                         insertedSale,
@@ -1231,7 +1245,7 @@ export async function POST(
                             centsToMoney(
                                 totalCents,
                             ),
-                    } satisfies CreateSaleResult;
+                    };
                 },
             );
 
@@ -1239,7 +1253,9 @@ export async function POST(
             result,
             201,
         );
-    } catch (error) {
+    } catch (
+        error
+        ) {
         console.error(
             "[POST /api/sales]",
             error,
@@ -1302,13 +1318,13 @@ export async function GET(
         }
 
         const params =
-            request.nextUrl
-                .searchParams;
+            request.nextUrl.searchParams;
 
         const search =
             params
                 .get("search")
-                ?.trim() ?? "";
+                ?.trim() ??
+            "";
 
         const status =
             params.get(
@@ -1317,18 +1333,14 @@ export async function GET(
 
         const page =
             parseInteger(
-                params.get(
-                    "page",
-                ),
+                params.get("page"),
                 DEFAULT_PAGE,
                 1,
             );
 
         const limit =
             parseInteger(
-                params.get(
-                    "limit",
-                ),
+                params.get("limit"),
                 DEFAULT_LIMIT,
                 1,
                 MAX_LIMIT,
@@ -1345,22 +1357,20 @@ export async function GET(
             ),
         ];
 
-        /**
-         * Only use statuses that are known
-         * to be valid according to the current
-         * business flow.
-         *
-         * Do not manually add "canceled"
-         * unless it exists in saleStatusEnum.
-         */
-        if (
+        const saleStatus =
             status === "draft" ||
-            status === "confirmed"
+            status === "confirmed" ||
+            status === "canceled"
+                ? status
+                : null;
+
+        if (
+            saleStatus !== null
         ) {
             filters.push(
                 eq(
                     sales.status,
-                    status,
+                    saleStatus,
                 ),
             );
         }
@@ -1372,13 +1382,16 @@ export async function GET(
                         sales.saleNumber,
                         `%${search}%`,
                     ),
+
                     ilike(
                         customers.name,
                         `%${search}%`,
                     ),
                 );
 
-            if (searchFilter) {
+            if (
+                searchFilter
+            ) {
                 filters.push(
                     searchFilter,
                 );
@@ -1481,15 +1494,15 @@ export async function GET(
         const total =
             Number(
                 countResult[0]
-                    ?.total ?? 0,
+                    ?.total ??
+                0,
             );
 
         const totalPages =
             total === 0
                 ? 0
                 : Math.ceil(
-                    total /
-                    limit,
+                    total / limit,
                 );
 
         return apiSuccess({
@@ -1509,10 +1522,13 @@ export async function GET(
                     totalPages,
 
                 hasPreviousPage:
-                    page > 1,
+                    page >
+                    1,
             },
         });
-    } catch (error) {
+    } catch (
+        error
+        ) {
         console.error(
             "[GET /api/sales]",
             error,
