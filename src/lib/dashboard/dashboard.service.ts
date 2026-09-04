@@ -6,7 +6,7 @@ import {
     sql,
 } from "drizzle-orm";
 
-import { db } from "@/src/db";
+import {db} from "@/src/db";
 
 import {
     customers,
@@ -166,30 +166,42 @@ function getOrganizationProfilePercentage(
 export async function getDashboardData(
     session: SessionLike,
 ): Promise<DashboardData | null> {
-    const userId = session.user.id;
-
     /*
      * --------------------------------------------------------
-     * RESOLVE LOCAL MIZAN ORGANIZATION
+     * ACTIVE BETTER AUTH ORGANIZATION
      * --------------------------------------------------------
+     *
+     * The dashboard must always operate inside the active
+     * Better Auth organization.
+     *
+     * We intentionally DO NOT fall back to the first local
+     * membership because that would bypass the active
+     * organization context used by Better Auth permissions.
      */
 
     const authOrganizationId =
-        session.session
-            ?.activeOrganizationId ?? null;
+        session.session?.activeOrganizationId ?? null;
 
-    let organizationId: string | null =
-        null;
+    if (!authOrganizationId) {
+        return null;
+    }
 
     /*
-     * Better Auth organization ID
-     * -> local Mizan organization
+     * --------------------------------------------------------
+     * MAP BETTER AUTH ORGANIZATION → MIZAN ORGANIZATION
+     * --------------------------------------------------------
      */
 
-    if (authOrganizationId) {
-        const rows = await db
+    const organizationRows =
+        await db
             .select({
                 id: organizations.id,
+                authOrganizationId:
+                organizations.authOrganizationId,
+                name: organizations.name,
+                wilaya: organizations.wilaya,
+                currency: organizations.currency,
+                createdAt: organizations.createdAt,
             })
             .from(organizations)
             .where(
@@ -200,63 +212,15 @@ export async function getDashboardData(
             )
             .limit(1);
 
-        organizationId =
-            rows[0]?.id ?? null;
-    }
-
-    /*
-     * Fallback to membership
-     */
-
-    if (!organizationId) {
-        const membershipRows =
-            await db
-                .select({
-                    organizationId:
-                    members.organizationId,
-                })
-                .from(members)
-                .where(
-                    eq(
-                        members.userId,
-                        userId,
-                    ),
-                )
-                .limit(1);
-
-        organizationId =
-            membershipRows[0]
-                ?.organizationId ?? null;
-    }
-
-    if (!organizationId) {
-        return null;
-    }
-
-    /*
-     * --------------------------------------------------------
-     * ORGANIZATION
-     * --------------------------------------------------------
-     */
-
-    const organizationRows =
-        await db
-            .select()
-            .from(organizations)
-            .where(
-                eq(
-                    organizations.id,
-                    organizationId,
-                ),
-            )
-            .limit(1);
-
     const organization =
         organizationRows[0];
 
     if (!organization) {
         return null;
     }
+
+    const organizationId =
+        organization.id;
 
     /*
      * --------------------------------------------------------
@@ -278,10 +242,6 @@ export async function getDashboardData(
     /*
      * --------------------------------------------------------
      * SALES
-     * --------------------------------------------------------
-     *
-     * IMPORTANT:
-     * sales.totalAmount is the actual schema field.
      * --------------------------------------------------------
      */
 
@@ -468,8 +428,11 @@ export async function getDashboardData(
      * --------------------------------------------------------
      */
 
-    const overallSalesRows =
-        await db
+    const [
+        overallSalesRows,
+        overallPaymentsRows,
+    ] = await Promise.all([
+        db
             .select({
                 total: sql<number>`
                     coalesce(
@@ -486,17 +449,16 @@ export async function getDashboardData(
                     sales.organizationId,
                     organizationId,
                 ),
-            );
+            ),
 
-    const overallPaymentsRows =
-        await db
+        db
             .select({
                 total: sql<number>`
                     coalesce(
                         sum(
-                            ${payments.amount}
-                        ),
-                        0
+                    ${payments.amount}
+                    ),
+                    0
                     )
                 `,
             })
@@ -506,7 +468,8 @@ export async function getDashboardData(
                     payments.organizationId,
                     organizationId,
                 ),
-            );
+            ),
+    ]);
 
     const totalSales =
         asNumber(
@@ -517,16 +480,6 @@ export async function getDashboardData(
         asNumber(
             overallPaymentsRows[0]?.total,
         );
-
-    /*
-     * NOTE:
-     * Because the payment schema was not provided here,
-     * the organization-level outstanding balance is the
-     * current sales total minus all organization payments.
-     *
-     * Once the exact payment-to-sale relation is available,
-     * this can be made customer/sale precise.
-     */
 
     const outstandingDebt =
         Math.max(
@@ -706,9 +659,7 @@ export async function getDashboardData(
         );
     }
 
-    for (
-        const row of trendSales
-        ) {
+    for (const row of trendSales) {
         const date =
             new Date(
                 row.createdAt,
@@ -758,7 +709,8 @@ export async function getDashboardData(
         }
     }
 
-    const salesTrend: DashboardSalesTrendItem[] =
+    const salesTrend:
+        DashboardSalesTrendItem[] =
         Array.from(
             salesTrendMap.values(),
         ).map(
@@ -826,16 +778,8 @@ export async function getDashboardData(
             )
             .limit(8);
 
-    /*
-     * We do not invent a sale/payment relation here.
-     *
-     * The current DashboardData contract expects paid and
-     * outstanding values, so recent sales expose the known
-     * total and leave payment allocation at zero until the
-     * actual payment schema relation is mapped.
-     */
-
-    const recentSales: DashboardRecentSale[] =
+    const recentSales:
+        DashboardRecentSale[] =
         recentSalesRows.map(
             (row) => {
                 const total =
@@ -871,14 +815,12 @@ export async function getDashboardData(
      * TOP DEBTORS
      * --------------------------------------------------------
      *
-     * Without an exact payment -> sale/customer relation,
-     * we do not falsely label gross sales as debt.
-     *
-     * Therefore this remains empty rather than incorrect.
-     * --------------------------------------------------------
+     * Payment allocation is not inferred without an exact
+     * payment -> sale/customer relation.
      */
 
-    const topDebtors: DashboardTopDebtor[] =
+    const topDebtors:
+        DashboardTopDebtor[] =
         [];
 
     /*
@@ -952,12 +894,11 @@ export async function getDashboardData(
      * --------------------------------------------------------
      */
 
-    const alerts: DashboardAlert[] =
+    const alerts:
+        DashboardAlert[] =
         [];
 
-    if (
-        outstandingDebt > 0
-    ) {
+    if (outstandingDebt > 0) {
         alerts.push({
             id:
                 "debts",
@@ -989,9 +930,7 @@ export async function getDashboardData(
                 ?.count,
         );
 
-    if (
-        invoiceCount === 0
-    ) {
+    if (invoiceCount === 0) {
         alerts.push({
             id:
                 "invoices-empty",
@@ -1019,9 +958,7 @@ export async function getDashboardData(
                 ?.count,
         );
 
-    if (
-        customerCount === 0
-    ) {
+    if (customerCount === 0) {
         alerts.push({
             id:
                 "customers-empty",

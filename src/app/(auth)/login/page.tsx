@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState } from "react";
+import React, {useState} from "react";
 import {
     ArrowRight,
     Eye,
@@ -10,64 +10,11 @@ import {
     Mail,
     ShieldCheck,
 } from "lucide-react";
-
-import { authClient } from "@/src/lib/auth-client";
-
-type AuthError = {
-    code?: string | null;
-    message?: string | null;
-    status?: number;
-};
-
-function getLoginErrorMessage(error?: AuthError | null) {
-    if (!error) {
-        return "Invalid email or password.";
-    }
-
-    const code = String(error.code ?? "").toUpperCase();
-
-    if (
-        code === "INVALID_EMAIL_OR_PASSWORD" ||
-        code === "INVALID_CREDENTIALS" ||
-        code === "INVALID_PASSWORD"
-    ) {
-        return "Invalid email or password.";
-    }
-
-    if (code === "USER_NOT_FOUND") {
-        return "No account was found with this email address.";
-    }
-
-    if (code === "EMAIL_NOT_VERIFIED") {
-        return "Please verify your email address before signing in.";
-    }
-
-    if (code === "TOO_MANY_REQUESTS") {
-        return "Too many login attempts. Please try again later.";
-    }
-
-    if (error.status === 401) {
-        return "Invalid email or password.";
-    }
-
-    if (error.status === 403) {
-        return "You are not allowed to sign in with these credentials.";
-    }
-
-    if (error.status === 500) {
-        return "Authentication server error. Please try again later.";
-    }
-
-    return (
-        error.message ||
-        "We couldn't sign you in. Please check your details and try again."
-    );
-}
+import {authClient} from "@/src/lib/auth-client";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -77,24 +24,15 @@ export default function LoginPage() {
     ) {
         e.preventDefault();
 
-        if (loading) {
-            return;
-        }
+        if (loading) return;
 
-        const normalizedEmail = email.trim().toLowerCase();
+        const normalizedEmail =
+            email.trim().toLowerCase();
 
-        if (!normalizedEmail) {
-            setError("Please enter your email address.");
-            return;
-        }
-
-        if (!password) {
-            setError("Please enter your password.");
-            return;
-        }
-
-        if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
-            setError("Please enter a valid email address.");
+        if (!normalizedEmail || !password) {
+            setError(
+                "Please enter your email and password.",
+            );
             return;
         }
 
@@ -102,40 +40,119 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const result = await authClient.signIn.email({
-                email: normalizedEmail,
-                password,
-            });
-
-            if (result.error) {
-                console.error("[Mizan DZ] Sign-in failed:", {
-                    code: result.error.code,
-                    message: result.error.message,
-                    status: result.error.status,
+            /*
+             * 1. Authenticate the user
+             */
+            const {error: signInError} =
+                await authClient.signIn.email({
+                    email: normalizedEmail,
+                    password,
                 });
 
+            if (signInError) {
                 setError(
-                    getLoginErrorMessage(result.error),
+                    signInError.code ===
+                    "INVALID_EMAIL_OR_PASSWORD"
+                        ? "Invalid email or password."
+                        : "We couldn't sign you in. Please check your details and try again.",
                 );
 
                 return;
             }
 
-            console.log("[Mizan DZ] Sign-in successful.");
+            /*
+             * 2. Load organizations the authenticated
+             *    user belongs to.
+             */
+            const {
+                data: organizations,
+                error: organizationError,
+            } = await authClient.organization.list();
+
+            if (organizationError) {
+                console.error(
+                    "[Login] Failed to load organizations",
+                    organizationError,
+                );
+
+                setError(
+                    "Signed in, but we couldn't load your organizations. Please try again.",
+                );
+
+                return;
+            }
 
             /*
-             * Do not call organization.list() immediately here.
+             * 3. User is authenticated but has no
+             *    organization.
              *
-             * Better Auth has already created the authenticated
-             * session. The onboarding flow can safely determine
-             * whether the user needs to create/select/activate
-             * an organization.
+             *    This is NOT an authentication error.
+             *    Send the user to onboarding.
              */
-            window.location.assign("/onboarding");
-        } catch (unknownError) {
+            if (
+                !organizations ||
+                organizations.length === 0
+            ) {
+                window.location.assign(
+                    "/onboarding",
+                );
+
+                return;
+            }
+
+            /*
+             * 4. User belongs to multiple organizations.
+             *
+             *    Never arbitrarily select the first one.
+             *    Let the user choose.
+             */
+            if (organizations.length > 1) {
+                window.location.assign(
+                    "/select-organization",
+                );
+
+                return;
+            }
+
+            /*
+             * 5. User belongs to exactly one organization.
+             *    Make it the active organization.
+             */
+            const organization =
+                organizations[0];
+
+            const {
+                error: setActiveError,
+            } =
+                await authClient.organization.setActive({
+                    organizationId:
+                    organization.id,
+                });
+
+            if (setActiveError) {
+                console.error(
+                    "[Login] Failed to activate organization",
+                    setActiveError,
+                );
+
+                setError(
+                    "Signed in, but we couldn't activate your organization. Please try again.",
+                );
+
+                return;
+            }
+
+            /*
+             * 6. Organization is active.
+             *    Continue to the dashboard.
+             */
+            window.location.assign(
+                "/dashboard",
+            );
+        } catch (error) {
             console.error(
-                "[Mizan DZ] Unexpected sign-in error:",
-                unknownError,
+                "[Login]",
+                error,
             );
 
             setError(
@@ -153,7 +170,9 @@ export default function LoginPage() {
                     href="/"
                     className="inline-flex items-center gap-3"
                 >
-                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--primary)] text-sm font-black text-white shadow-lg shadow-blue-500/20">
+                    <span
+                        className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--primary)] text-sm font-black text-white shadow-lg shadow-blue-500/20"
+                    >
                         M
                     </span>
 
@@ -166,8 +185,10 @@ export default function LoginPage() {
             <div className="mizan-card mizan-animate-scale overflow-hidden">
                 <div className="p-6 sm:p-8">
                     <div className="mb-7">
-                        <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[var(--mizan-blue-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--primary)]">
-                            <ShieldCheck className="h-3.5 w-3.5" />
+                        <div
+                            className="mb-4 inline-flex items-center gap-2 rounded-full bg-[var(--mizan-blue-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--primary)]"
+                        >
+                            <ShieldCheck className="h-3.5 w-3.5"/>
 
                             Secure business access
                         </div>
@@ -211,14 +232,16 @@ export default function LoginPage() {
                                     disabled={loading}
                                     value={email}
                                     onChange={(e) => {
-                                        setEmail(e.target.value);
+                                        setEmail(
+                                            e.target.value,
+                                        );
 
                                         if (error) {
                                             setError("");
                                         }
                                     }}
                                     placeholder="you@company.dz"
-                                    className="h-12 w-full pl-11 pr-4 text-sm"
+                                    className="h-12 pl-11 pr-4 text-sm"
                                 />
                             </div>
                         </div>
@@ -259,21 +282,24 @@ export default function LoginPage() {
                                     disabled={loading}
                                     value={password}
                                     onChange={(e) => {
-                                        setPassword(e.target.value);
+                                        setPassword(
+                                            e.target.value,
+                                        );
 
                                         if (error) {
                                             setError("");
                                         }
                                     }}
                                     placeholder="Enter your password"
-                                    className="h-12 w-full pl-11 pr-12 text-sm"
+                                    className="h-12 pl-11 pr-12 text-sm"
                                 />
 
                                 <button
                                     type="button"
                                     onClick={() =>
                                         setShowPassword(
-                                            (value) => !value,
+                                            (value) =>
+                                                !value,
                                         )
                                     }
                                     disabled={loading}
@@ -285,9 +311,9 @@ export default function LoginPage() {
                                     className="mizan-icon-button absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2"
                                 >
                                     {showPassword ? (
-                                        <EyeOff className="h-4 w-4" />
+                                        <EyeOff className="h-4 w-4"/>
                                     ) : (
-                                        <Eye className="h-4 w-4" />
+                                        <Eye className="h-4 w-4"/>
                                     )}
                                 </button>
                             </div>
@@ -306,7 +332,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="mizan-primary-action group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+                            className="mizan-primary-action group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-semibold text-white"
                         >
                             {loading ? (
                                 <>
@@ -321,14 +347,16 @@ export default function LoginPage() {
                                 <>
                                     Sign in
 
-                                    <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                                    <ArrowRight
+                                        className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"/>
                                 </>
                             )}
                         </button>
                     </form>
                 </div>
 
-                <div className="border-t border-[var(--border-soft)] bg-[var(--surface-secondary)] px-6 py-4 text-center sm:px-8">
+                <div
+                    className="border-t border-[var(--border-soft)] bg-[var(--surface-secondary)] px-6 py-4 text-center sm:px-8">
                     <p className="text-sm text-[var(--text-muted)]">
                         New to Mizan DZ?{" "}
                         <Link

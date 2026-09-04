@@ -30,7 +30,7 @@ export async function requireOrganization() {
         },
     });
 
-    if (!session) {
+    if (!session?.user) {
         throw createError(
             "Unauthorized.",
             401,
@@ -38,61 +38,26 @@ export async function requireOrganization() {
         );
     }
 
-    let activeAuthOrganizationId =
+    const activeAuthOrganizationId =
         session.session.activeOrganizationId;
 
     /*
-     * No active organization yet.
+     * The dashboard must only run with an active organization.
      *
-     * This does NOT mean the user has no organization.
-     * Check Better Auth memberships first.
+     * Do not attempt to activate an organization here.
+     * Server-side activation cannot reliably persist the
+     * resulting auth cookie into the browser request.
      */
     if (!activeAuthOrganizationId) {
-        const userOrganizations =
-            await auth.api.listOrganizations({
-                headers: requestHeaders,
-            });
-
-        if (!userOrganizations?.length) {
-            throw createError(
-                "Your account is not associated with an organization.",
-                409,
-                "NO_ORGANIZATION",
-            );
-        }
-
-        /*
-         * One organization only:
-         * make it active automatically.
-         */
-        if (userOrganizations.length === 1) {
-            const organization =
-                userOrganizations[0];
-
-            await auth.api.setActiveOrganization({
-                headers: requestHeaders,
-                body: {
-                    organizationId: organization.id,
-                },
-            });
-
-            activeAuthOrganizationId =
-                organization.id;
-        } else {
-            /*
-             * User belongs to multiple organizations
-             * but has not selected one.
-             */
-            throw createError(
-                "Multiple organizations found. Select an active organization.",
-                409,
-                "ORGANIZATION_SELECTION_REQUIRED",
-            );
-        }
+        throw createError(
+            "No active organization.",
+            409,
+            "NO_ACTIVE_ORGANIZATION",
+        );
     }
 
     /*
-     * Map Better Auth organization → Mizan organization
+     * Map Better Auth organization → Mizan organization.
      */
     const [organization] =
         await db
