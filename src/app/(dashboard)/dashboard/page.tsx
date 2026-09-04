@@ -1,7 +1,7 @@
-import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import {headers} from "next/headers";
+import {redirect} from "next/navigation";
 
-import { auth } from "@/src/lib/auth";
+import {auth} from "@/src/lib/auth";
 
 import {
     getDashboardData,
@@ -12,23 +12,47 @@ import DashboardClient, {
 } from "@/src/components/dashboard/dashboard-client";
 
 export default async function DashboardPage() {
-    const requestHeaders =
-        await headers();
+    const requestHeaders = await headers();
 
-    const session =
-        await auth.api.getSession({
-            headers: requestHeaders,
-        });
+    const session = await auth.api.getSession({
+        headers: requestHeaders,
+    });
 
-    if (!session) {
+    /*
+     * ========================================================
+     * AUTHENTICATION
+     * ========================================================
+     */
+
+    if (!session?.user) {
         redirect("/login");
     }
 
-    const dashboard =
-        await getDashboardData(session);
+    /*
+     * ========================================================
+     * ACTIVE ORGANIZATION
+     * ========================================================
+     *
+     * The dashboard requires an active organization.
+     *
+     * If the user is authenticated but has no active
+     * organization yet, send them through onboarding.
+     */
+
+    if (!session.session.activeOrganizationId) {
+        redirect("/onboarding");
+    }
+
+    /*
+     * ========================================================
+     * DASHBOARD DATA
+     * ========================================================
+     */
+
+    const dashboard = await getDashboardData(session);
 
     if (!dashboard) {
-        notFound();
+        redirect("/onboarding");
     }
 
     /*
@@ -36,10 +60,9 @@ export default async function DashboardPage() {
      * UI PERMISSIONS
      * ========================================================
      *
-     * These values are used only to control visibility.
+     * These values are used only for UI visibility.
      *
-     * Real authorization must remain in the
-     * server/API layer.
+     * Real authorization remains on the server/API layer.
      */
 
     const [
