@@ -23,9 +23,7 @@ export default async function DashboardPage() {
     if (!session) {
         redirect("/login");
     }
-    if (!session.session.activeOrganizationId) {
-        redirect("/onboarding");
-    }
+
 
     const dashboard =
         await getDashboardData(session);
