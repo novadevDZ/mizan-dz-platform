@@ -1,7 +1,7 @@
-import {headers} from "next/headers";
-import {notFound, redirect} from "next/navigation";
+import { headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 
-import {auth} from "@/src/lib/auth";
+import { auth } from "@/src/lib/auth";
 
 import {
     getDashboardData,
@@ -23,7 +23,6 @@ export default async function DashboardPage() {
     if (!session) {
         redirect("/login");
     }
-
 
     const dashboard =
         await getDashboardData(session);
