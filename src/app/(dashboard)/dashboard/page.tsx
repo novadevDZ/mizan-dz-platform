@@ -1,5 +1,5 @@
 import {headers} from "next/headers";
-import {redirect} from "next/navigation";
+import {notFound, redirect} from "next/navigation";
 
 import {auth} from "@/src/lib/auth";
 
@@ -12,47 +12,26 @@ import DashboardClient, {
 } from "@/src/components/dashboard/dashboard-client";
 
 export default async function DashboardPage() {
-    const requestHeaders = await headers();
+    const requestHeaders =
+        await headers();
 
-    const session = await auth.api.getSession({
-        headers: requestHeaders,
-    });
+    const session =
+        await auth.api.getSession({
+            headers: requestHeaders,
+        });
 
-    /*
-     * ========================================================
-     * AUTHENTICATION
-     * ========================================================
-     */
-
-    if (!session?.user) {
+    if (!session) {
         redirect("/login");
     }
-
-    /*
-     * ========================================================
-     * ACTIVE ORGANIZATION
-     * ========================================================
-     *
-     * The dashboard requires an active organization.
-     *
-     * If the user is authenticated but has no active
-     * organization yet, send them through onboarding.
-     */
-
     if (!session.session.activeOrganizationId) {
         redirect("/onboarding");
     }
 
-    /*
-     * ========================================================
-     * DASHBOARD DATA
-     * ========================================================
-     */
-
-    const dashboard = await getDashboardData(session);
+    const dashboard =
+        await getDashboardData(session);
 
     if (!dashboard) {
-        redirect("/onboarding");
+        notFound();
     }
 
     /*
@@ -60,9 +39,10 @@ export default async function DashboardPage() {
      * UI PERMISSIONS
      * ========================================================
      *
-     * These values are used only for UI visibility.
+     * These values are used only to control visibility.
      *
-     * Real authorization remains on the server/API layer.
+     * Real authorization must remain in the
+     * server/API layer.
      */
 
     const [
