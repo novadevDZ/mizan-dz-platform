@@ -1,8 +1,8 @@
-import {betterAuth} from "better-auth/minimal";
-import {drizzleAdapter} from "@better-auth/drizzle-adapter";
-import {organization} from "better-auth/plugins";
+import { betterAuth } from "better-auth/minimal";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { organization } from "better-auth/plugins";
 
-import {db} from "@/src/db";
+import { db } from "@/src/db";
 
 import {
     user,
@@ -27,29 +27,21 @@ import {
     provisionMizanMember,
 } from "@/src/lib/members/provision-mizan-member";
 
+const baseURL =
+    process.env.BETTER_AUTH_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    "http://localhost:3000";
+
 export const auth = betterAuth({
-    /*
-     * =========================================================
-     * BETTER AUTH CONFIGURATION
-     * =========================================================
-     *
-     * Explicitly define the production secret and base URL.
-     *
-     * Local:
-     * BETTER_AUTH_URL=http://localhost:3000
-     *
-     * Production:
-     * BETTER_AUTH_URL=https://mizan-dz.vercel.app
-     */
     secret: process.env.BETTER_AUTH_SECRET,
 
-    baseURL: process.env.BETTER_AUTH_URL,
+    baseURL,
 
-    /*
-     * =========================================================
-     * DATABASE
-     * =========================================================
-     */
+    trustedOrigins: [
+        baseURL,
+        "https://mizan-six-psi.vercel.app",
+    ],
+
     database: drizzleAdapter(db, {
         provider: "pg",
 
@@ -65,118 +57,52 @@ export const auth = betterAuth({
         },
     }),
 
-    /*
-     * =========================================================
-     * EMAIL + PASSWORD
-     * =========================================================
-     */
     emailAndPassword: {
         enabled: true,
     },
 
-    /*
-     * =========================================================
-     * ORGANIZATION
-     * =========================================================
-     */
     plugins: [
         organization({
-            /*
-             * Access control
-             */
             ac,
 
-            /*
-             * Organization roles
-             */
             roles: {
                 owner,
                 employee,
             },
 
-            /*
-             * Role automatically assigned to
-             * the organization creator.
-             */
             creatorRole: "owner",
 
-            /*
-             * Invitation validity:
-             * 7 days.
-             */
             invitationExpiresIn: 60 * 60 * 24 * 7,
 
-            /*
-             * Users must verify their email
-             * before viewing/accepting invitations.
-             */
             requireEmailVerificationOnInvitation: true,
 
-            /*
-             * =================================================
-             * INVITATION EMAIL
-             * =================================================
-             *
-             * Email provider can be connected later.
-             *
-             * During development, the invitation URL is
-             * printed to the server console.
-             */
             async sendInvitationEmail(data) {
                 const appUrl =
                     process.env.NEXT_PUBLIC_APP_URL ??
                     process.env.BETTER_AUTH_URL ??
                     "";
 
-                const inviteUrl =
-                    `${appUrl}/invite/${data.id}`;
+                const inviteUrl = `${appUrl}/invite/${data.id}`;
 
                 if (process.env.NODE_ENV === "development") {
                     console.log(
                         "[Mizan DZ] Invitation URL:",
-                        inviteUrl,
+                        inviteUrl
                     );
 
                     console.log(
                         "[Mizan DZ] Invitation recipient:",
-                        data.email,
+                        data.email
                     );
 
                     console.log(
                         "[Mizan DZ] Organization:",
-                        data.organization.name,
+                        data.organization.name
                     );
                 }
-
-                /*
-                 * Production email implementation goes here.
-                 *
-                 * Example:
-                 *
-                 * await sendInvitationEmail({
-                 *     to: data.email,
-                 *     inviteUrl,
-                 *     organizationName:
-                 *         data.organization.name,
-                 *     inviterName:
-                 *         data.inviter.user.name,
-                 * });
-                 */
             },
 
-            /*
-             * =================================================
-             * ORGANIZATION HOOKS
-             * =================================================
-             */
             organizationHooks: {
-                /*
-                 * When an invitation is accepted:
-                 *
-                 * Better Auth member
-                 *        ↓
-                 * Mizan member
-                 */
                 afterAcceptInvitation: async ({
                                                   member,
                                                   user,
@@ -184,50 +110,28 @@ export const auth = betterAuth({
                                               }) => {
                     await provisionMizanMember({
                         authMemberId: member.id,
-
                         userId: user.id,
-
-                        authOrganizationId:
-                        organization.id,
+                        authOrganizationId: organization.id,
                     });
                 },
             },
         }),
     ],
 
-    /*
-     * =========================================================
-     * USER
-     * =========================================================
-     */
     user: {
         additionalFields: {
-            /*
-             * Phone number
-             */
             phone: {
                 type: "string",
-
                 required: true,
-
                 input: true,
-
                 returned: true,
             },
 
-            /*
-             * Used by the onboarding flow to determine
-             * whether the owner prompt has already been shown.
-             */
             ownerPromptShown: {
                 type: "boolean",
-
                 required: false,
-
                 defaultValue: false,
-
                 input: false,
-
                 returned: true,
             },
         },
